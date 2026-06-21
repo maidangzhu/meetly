@@ -10,10 +10,20 @@ import {
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useCallback, useMemo, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
 
 type IslandState = "idle" | "listening" | "transcribing" | "thinking" | "error";
 type OpenPanel = null | "assistant" | "audio" | "diagnostics";
+type AudioRunState = "idle" | "listening" | "setup_required" | "error";
+
+type AudioStatus = {
+  state: AudioRunState;
+  platform: string;
+  inputDevice: string | null;
+  outputDevice: string | null;
+  setupRequired: boolean;
+  message: string | null;
+};
 
 const CARD_SURFACE =
   "border border-white/10 bg-[rgb(27_27_28_/_0.82)] shadow-[0_8px_24px_rgb(0_0_0_/_0.16)] backdrop-blur-[20px]";
@@ -37,6 +47,7 @@ export function App() {
   const [state, setState] = useState<IslandState>("idle");
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
   const [isHidden, setIsHidden] = useState(false);
+  const [audioStatus, setAudioStatus] = useState<AudioStatus | null>(null);
 
   const isExpanded = openPanel !== null;
 
@@ -66,9 +77,45 @@ export function App() {
     [resizeIsland]
   );
 
-  const toggleListening = useCallback(() => {
-    setState((current) => (current === "listening" ? "idle" : "listening"));
-  }, []);
+  const applyAudioStatus = useCallback((status: AudioStatus | undefined) => {
+    if (!status) {
+      return;
+    }
+
+    setAudioStatus(status);
+
+    if (status.state === "listening") {
+      setState("listening");
+      return;
+    }
+
+    if (status.state === "setup_required" || status.state === "error") {
+      setState("error");
+      setOpenPanel("diagnostics");
+      void resizeIsland(true);
+      return;
+    }
+
+    setState("idle");
+  }, [resizeIsland]);
+
+  const refreshAudioStatus = useCallback(async () => {
+    const status = await safeInvoke<AudioStatus>("get_audio_status");
+    applyAudioStatus(status);
+  }, [applyAudioStatus]);
+
+  useEffect(() => {
+    void refreshAudioStatus();
+  }, [refreshAudioStatus]);
+
+  const toggleListening = useCallback(async () => {
+    setState((current) => (current === "listening" ? "idle" : "thinking"));
+
+    const command = audioStatus?.state === "listening" ? "stop_listening" : "start_listening";
+    const status = await safeInvoke<AudioStatus>(command);
+
+    applyAudioStatus(status);
+  }, [applyAudioStatus, audioStatus?.state]);
 
   const toggleHidden = useCallback(async () => {
     setIsHidden((current) => !current);
@@ -239,9 +286,9 @@ export function App() {
 
           <div className="h-[calc(600px-62px-56px)] overflow-auto p-3.5">
             {openPanel === "diagnostics" ? (
-              <Diagnostics />
+              <Diagnostics audioStatus={audioStatus} />
             ) : (
-              <AssistantPreview state={state} setState={setState} />
+              <AssistantPreview state={state} />
             )}
           </div>
         </section>
@@ -264,13 +311,7 @@ function AudioBars() {
   );
 }
 
-function AssistantPreview({
-  state,
-  setState,
-}: {
-  state: IslandState;
-  setState: (state: IslandState) => void;
-}) {
+function AssistantPreview({ state }: { state: IslandState }) {
   return (
     <>
       <div className="mb-3 rounded-xl border border-white/[0.08] bg-white/[0.05] p-3.5">
@@ -279,20 +320,6 @@ function AssistantPreview({
           这是 0.1 的空灵动岛骨架。音频、STT、LLM、BYOK 会在后续小版本按
           OpenSpec change 逐步接入。
         </p>
-      </div>
-      <div className="mb-3 grid grid-cols-4 gap-2">
-        <button className="h-[34px] rounded-[10px] border border-white/[0.08] bg-white/[0.06] text-white/80 hover:bg-white/10" onClick={() => setState("idle")}>
-          Idle
-        </button>
-        <button className="h-[34px] rounded-[10px] border border-white/[0.08] bg-white/[0.06] text-white/80 hover:bg-white/10" onClick={() => setState("listening")}>
-          Listening
-        </button>
-        <button className="h-[34px] rounded-[10px] border border-white/[0.08] bg-white/[0.06] text-white/80 hover:bg-white/10" onClick={() => setState("thinking")}>
-          Thinking
-        </button>
-        <button className="h-[34px] rounded-[10px] border border-white/[0.08] bg-white/[0.06] text-white/80 hover:bg-white/10" onClick={() => setState("error")}>
-          Error
-        </button>
       </div>
       <div className="mb-3 rounded-xl border border-white/[0.08] bg-white/[0.05] p-3.5">
         <p className="m-0 text-[11px] text-white/60">Pluely-style 验收</p>
@@ -307,12 +334,34 @@ function AssistantPreview({
   );
 }
 
-function Diagnostics() {
+function Diagnostics({ audioStatus }: { audioStatus: AudioStatus | null }) {
   return (
     <div className="grid grid-cols-1 gap-2.5">
       <DiagnosticItem label="Tauri shell" value="Ready" state="ok" />
       <DiagnosticItem label="Island window" value="600 x 54" state="ok" />
-      <DiagnosticItem label="Native audio" value="Not implemented" state="pending" />
+      <DiagnosticItem
+        label="Audio state"
+        value={audioStatus ? audioStatus.state : "Checking..."}
+        state={audioStatus?.setupRequired ? "pending" : "ok"}
+      />
+      <DiagnosticItem
+        label="Output device"
+        value={audioStatus?.outputDevice ?? "Not found"}
+        state={audioStatus?.outputDevice ? "ok" : "pending"}
+      />
+      <DiagnosticItem
+        label="Input device"
+        value={audioStatus?.inputDevice ?? "Not found"}
+        state={audioStatus?.inputDevice ? "ok" : "pending"}
+      />
+      <DiagnosticItem
+        label="Platform"
+        value={audioStatus?.platform ?? "Unknown"}
+        state={audioStatus ? "ok" : "pending"}
+      />
+      {audioStatus?.message && (
+        <DiagnosticItem label="Audio message" value={audioStatus.message} state="pending" />
+      )}
       <DiagnosticItem label="Stealth guard" value="Not implemented" state="pending" />
       <DiagnosticItem label="BYOK storage" value="Not implemented" state="pending" />
     </div>

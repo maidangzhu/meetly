@@ -15,3 +15,14 @@
 - Keep drag behavior explicit through Tauri `startDragging()` for known draggable surfaces.
 - Keep business buttons separate from draggable surfaces so clicks and drags do not compete.
 - Do not allow text selection in the top floating bar.
+
+## Git Tags
+
+- Use annotated tags for milestone checkpoints, not lightweight tags.
+- Tag only committed, pushed, verified work. Do not tag a dirty worktree or a half-finished change.
+- Tag milestone completion points with the format `m<number>-<short-name>`, for example `m1-floating-island`.
+- Keep tag names stable and lowercase; use hyphens between words.
+- The tag message should state the milestone in one short sentence, for example `M1: native floating island shell`.
+- Push tags explicitly with `git push origin <tag-name>` after creating them.
+- Do not reuse or move a pushed tag unless the tag is clearly wrong and the team agrees. Prefer creating a new corrective tag.
+- Use tags to mark product/engineering progress checkpoints. Use commits for ordinary code history and branches for active work.
