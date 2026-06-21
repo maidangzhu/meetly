@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "fuck-stupid-interview",
+  "productName": "Meetly",
   "version": "0.1.0",
-  "identifier": "com.maidang.fuck-stupid-interview",
+  "identifier": "com.maidang.meetly",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://127.0.0.1:1420",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "island",
-        "title": "fuck-stupid-interview",
+        "title": "Meetly",
         "width": 600,
         "height": 54,
         "minWidth": 600,

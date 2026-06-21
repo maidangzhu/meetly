@@ -1,4 +1,4 @@
-# fuck-stupid-interview
+# Meetly
 
 一个面向中文会议、面试、销售沟通场景的极简桌面辅助 MVP。
 
