@@ -72,6 +72,8 @@ button {
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.16);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .center-lane {

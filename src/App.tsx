@@ -9,7 +9,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useMemo, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useCallback, useMemo, useState, type MouseEvent } from "react";
 
 type IslandState = "idle" | "listening" | "transcribing" | "thinking" | "error";
 type OpenPanel = null | "assistant" | "audio" | "diagnostics";
@@ -30,6 +31,20 @@ export function App() {
   const [isHidden, setIsHidden] = useState(false);
 
   const isExpanded = openPanel !== null;
+
+  const startIslandDrag = useCallback(async (event: MouseEvent<HTMLElement>) => {
+    if (event.button !== 0 || !isTauriRuntime()) {
+      return;
+    }
+
+    event.preventDefault();
+
+    try {
+      await getCurrentWindow().startDragging();
+    } catch (error) {
+      console.error("Failed to start island drag:", error);
+    }
+  }, []);
 
   const resizeIsland = useCallback(async (expanded: boolean) => {
     await safeInvoke("set_island_height", { height: expanded ? 600 : 54 });
@@ -113,16 +128,16 @@ export function App() {
           {state === "listening" ? <AudioLines /> : <Headphones />}
         </button>
 
-        <span className="drag-spacer" data-tauri-drag-region="true" />
+        <span className="drag-spacer" onMouseDown={startIslandDrag} />
 
         <div
           className={`center-lane ${state === "listening" ? "drag-lane" : ""}`}
-          data-tauri-drag-region={state === "listening" ? "true" : undefined}
+          onMouseDown={state === "listening" ? startIslandDrag : undefined}
         >
           {state === "listening" ? (
             <>
               <AudioBars />
-              <p className="ticker" data-tauri-drag-region="true">
+              <p className="ticker">
                 正在等待会议音频，实时转写会显示在这里
               </p>
             </>
@@ -147,7 +162,7 @@ export function App() {
           <Camera />
         </button>
 
-        <span className="drag-spacer" data-tauri-drag-region="true" />
+        <span className="drag-spacer" onMouseDown={startIslandDrag} />
 
         <button
           className="icon-button ghost"
@@ -158,24 +173,25 @@ export function App() {
           {!status.icon && <span className="idle-dot" />}
         </button>
 
-        <div className={status.className} data-tauri-drag-region="true">
+        <div className={status.className} onMouseDown={startIslandDrag}>
           {status.icon}
           <span>{status.label}</span>
         </div>
 
-        <button
+        <div
           className="drag-handle"
           title="Drag island"
-          data-tauri-drag-region="true"
+          aria-label="Drag island"
+          onMouseDown={startIslandDrag}
         >
           <GripVertical />
-        </button>
+        </div>
       </section>
 
       {openPanel && (
         <section className="island-panel">
           <div className="panel-header">
-            <div className="panel-title-drag" data-tauri-drag-region="true">
+            <div className="panel-title-drag" onMouseDown={startIslandDrag}>
               <p className="eyebrow">MVP 0.1</p>
               <h1>{openPanel === "diagnostics" ? "Diagnostics" : "Assistant"}</h1>
             </div>
