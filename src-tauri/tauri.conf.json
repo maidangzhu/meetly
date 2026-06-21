@@ -1,0 +1,44 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "fuck-stupid-interview",
+  "version": "0.1.0",
+  "identifier": "com.maidang.fuck-stupid-interview",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "island",
+        "title": "fuck-stupid-interview",
+        "width": 600,
+        "height": 54,
+        "minWidth": 600,
+        "minHeight": 54,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": false,
+        "resizable": false,
+        "visibleOnAllWorkspaces": true,
+        "skipTaskbar": true,
+        "visible": true,
+        "center": false,
+        "contentProtected": true,
+        "focus": false,
+        "acceptFirstMouse": true,
+        "shadow": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false,
+    "targets": "all"
+  }
+}
