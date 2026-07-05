@@ -72,6 +72,38 @@ cd src-tauri
 cargo check
 ```
 
+## 分发和测试版
+
+当前仓库已经接入 GitHub Release + Tauri updater。发布产物包括：
+
+- `Meetly_*.dmg`：给用户下载安装。
+- `Meetly.app.tar.gz`：Tauri updater 使用。
+- `Meetly.app.tar.gz.sig`：updater 签名。
+- `latest.json`：updater 版本索引。
+
+本机没有 Apple Developer ID 证书时，`pnpm tauri build` 只能产出 ad-hoc 签名包。这个包适合自己调试，或者给少量测试用户通过右键打开 / 移除 quarantine 的方式试用，但不能避免 Gatekeeper 的“取消 / 移到废纸篓”提示。
+
+要产出别人双击即可正常打开的测试版或正式版，需要走 `.github/workflows/release-macos.yml`：
+
+1. 在 GitHub Secrets 配置 Apple 和 Tauri updater 凭据。
+2. 手动触发 `Release macOS` workflow，输入版本号。
+3. CI 在 macOS runner 中签名 `.app`，notarize + staple `.dmg`，再上传 GitHub Release。
+
+需要的 GitHub Secrets：
+
+```text
+APPLE_CERTIFICATE                  # base64 后的 Developer ID Application .p12
+APPLE_CERTIFICATE_PASSWORD
+KEYCHAIN_PASSWORD                  # CI 临时 keychain 密码
+APPLE_ID                           # Apple ID 邮箱
+APPLE_PASSWORD                     # Apple app-specific password
+APPLE_TEAM_ID
+TAURI_SIGNING_PRIVATE_KEY          # Tauri updater 私钥
+TAURI_SIGNING_PRIVATE_KEY_PASSWORD # 当前可为空
+```
+
+Meetly 的 macOS entitlements 在 `src-tauri/Entitlements.plist`，当前声明麦克风输入和 WebView/JS runtime 所需的代码执行能力。权限说明文案在 `src-tauri/Info.plist`。
+
 ## Provider 配置
 
 Meetly 当前使用 OpenAI-compatible 风格的 STT/LLM provider。

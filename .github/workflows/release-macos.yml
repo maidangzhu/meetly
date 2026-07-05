@@ -1,0 +1,103 @@
+name: Release macOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, without v prefix, e.g. 0.1.1"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark GitHub release as prerelease"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.11.0
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Set package version
+        run: |
+          set -euo pipefail
+          npm pkg set version="${{ inputs.version }}"
+          node -e 'const fs=require("fs"); const p="src-tauri/tauri.conf.json"; const c=JSON.parse(fs.readFileSync(p,"utf8")); c.version=process.env.VERSION; fs.writeFileSync(p, JSON.stringify(c,null,2)+"\n");'
+        env:
+          VERSION: ${{ inputs.version }}
+
+      - id: apple-cert
+        uses: ./.github/actions/apple_cert
+        with:
+          apple-certificate: ${{ secrets.APPLE_CERTIFICATE }}
+          apple-certificate-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          keychain-password: ${{ secrets.KEYCHAIN_PASSWORD }}
+
+      - name: Build signed Tauri app
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ steps.apple-cert.outputs.cert-id }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build
+
+      - name: Find release artifacts
+        id: artifacts
+        run: |
+          set -euo pipefail
+          DMG_PATH=$(find src-tauri/target/release/bundle/dmg -name '*.dmg' -type f | head -n 1)
+          APP_TAR=$(find src-tauri/target/release/bundle/macos -name '*.app.tar.gz' -type f | head -n 1)
+          APP_SIG=$(find src-tauri/target/release/bundle/macos -name '*.app.tar.gz.sig' -type f | head -n 1)
+          LATEST_JSON="src-tauri/target/release/bundle/latest.json"
+          test -n "$DMG_PATH"
+          test -n "$APP_TAR"
+          test -n "$APP_SIG"
+          test -f "$LATEST_JSON"
+          echo "dmg=$DMG_PATH" >> "$GITHUB_OUTPUT"
+          echo "app_tar=$APP_TAR" >> "$GITHUB_OUTPUT"
+          echo "app_sig=$APP_SIG" >> "$GITHUB_OUTPUT"
+          echo "latest_json=$LATEST_JSON" >> "$GITHUB_OUTPUT"
+
+      - name: Notarize DMG
+        uses: ./.github/actions/macos_notarize_dmg
+        with:
+          dmg-path: ${{ steps.artifacts.outputs.dmg }}
+          signing-identity: ${{ steps.apple-cert.outputs.cert-id }}
+          apple-id: ${{ secrets.APPLE_ID }}
+          apple-password: ${{ secrets.APPLE_PASSWORD }}
+          apple-team-id: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Verify app assessment
+        run: |
+          set -euo pipefail
+          spctl -a -vvv -t execute "src-tauri/target/release/bundle/macos/Meetly.app"
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: Meetly v${{ inputs.version }}
+          prerelease: ${{ inputs.prerelease }}
+          files: |
+            ${{ steps.artifacts.outputs.dmg }}
+            ${{ steps.artifacts.outputs.app_tar }}
+            ${{ steps.artifacts.outputs.app_sig }}
+            ${{ steps.artifacts.outputs.latest_json }}
