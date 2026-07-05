@@ -1,9 +1,10 @@
-use tauri::{App, Manager, PhysicalPosition, Position, WebviewWindow};
 use std::time::Duration;
+use tauri::{App, Manager, PhysicalPosition, Position, WebviewWindow};
 
 const COLLAPSED_WIDTH: f64 = 600.0;
 const EXPANDED_WIDTH: f64 = 920.0;
 const COLLAPSED_HEIGHT: f64 = 54.0;
+const OUTER_GUTTER: f64 = 10.0;
 const CLICK_THROUGH_INTERACTIVE_HEIGHT: f64 = 122.0;
 const TOP_OFFSET: i32 = 54;
 
@@ -14,7 +15,10 @@ pub fn set_island_height(window: WebviewWindow, height: u32) -> Result<(), Strin
     } else {
         COLLAPSED_WIDTH
     };
-    let size = tauri::LogicalSize::new(width, height as f64);
+    let size = tauri::LogicalSize::new(
+        width + OUTER_GUTTER * 2.0,
+        height as f64 + OUTER_GUTTER * 2.0,
+    );
     window.set_size(size).map_err(|error| error.to_string())?;
     position_top_center(&window).map_err(|error| error.to_string())?;
     Ok(())
@@ -71,10 +75,7 @@ pub fn setup_island_window(app: &mut App) -> tauri::Result<()> {
     #[cfg(target_os = "macos")]
     setup_macos_panel(&window);
 
-    window.set_size(tauri::LogicalSize::new(
-        COLLAPSED_WIDTH,
-        COLLAPSED_HEIGHT,
-    ))?;
+    window.set_size(collapsed_window_size())?;
     position_top_center(&window)?;
     start_click_through_guard(window.clone());
 
@@ -95,7 +96,7 @@ fn position_top_center(window: &WebviewWindow) -> tauri::Result<()> {
         let window_height = window_size.height as i32;
 
         let centered_x = monitor_left + (monitor_size.width as i32 - window_width) / 2;
-        let desired_y = monitor_top + TOP_OFFSET;
+        let desired_y = monitor_top + TOP_OFFSET - OUTER_GUTTER.round() as i32;
 
         let max_x = monitor_right - window_width;
         let max_y = monitor_bottom - window_height;
@@ -110,6 +111,13 @@ fn position_top_center(window: &WebviewWindow) -> tauri::Result<()> {
 
 fn clamp_i32(value: i32, min: i32, max: i32) -> i32 {
     value.max(min).min(max)
+}
+
+fn collapsed_window_size() -> tauri::LogicalSize<f64> {
+    tauri::LogicalSize::new(
+        COLLAPSED_WIDTH + OUTER_GUTTER * 2.0,
+        COLLAPSED_HEIGHT + OUTER_GUTTER * 2.0,
+    )
 }
 
 fn start_click_through_guard(window: WebviewWindow) {
@@ -130,27 +138,35 @@ fn start_click_through_guard(window: WebviewWindow) {
 
 fn should_ignore_cursor_events(window: &WebviewWindow) -> Result<bool, String> {
     let size = window.outer_size().map_err(|error| error.to_string())?;
-    let is_expanded = size.height as f64 > COLLAPSED_HEIGHT + 20.0;
-    if !is_expanded {
-        return Ok(false);
-    }
-
     let position = window.outer_position().map_err(|error| error.to_string())?;
-    let cursor = window.cursor_position().map_err(|error| error.to_string())?;
+    let cursor = window
+        .cursor_position()
+        .map_err(|error| error.to_string())?;
     let scale = window.scale_factor().map_err(|error| error.to_string())?;
 
     let left = position.x as f64;
     let top = position.y as f64;
     let right = left + size.width as f64;
     let bottom = top + size.height as f64;
-
     let is_inside = cursor.x >= left && cursor.x <= right && cursor.y >= top && cursor.y <= bottom;
     if !is_inside {
         return Ok(false);
     }
 
+    let logical_width = size.width as f64 / scale;
+    let logical_height = size.height as f64 / scale;
+    let local_x = (cursor.x - left) / scale;
     let local_y = (cursor.y - top) / scale;
-    Ok(local_y > CLICK_THROUGH_INTERACTIVE_HEIGHT)
+    let is_in_outer_gutter = local_x < OUTER_GUTTER
+        || local_x > logical_width - OUTER_GUTTER
+        || local_y < OUTER_GUTTER
+        || local_y > logical_height - OUTER_GUTTER;
+    if is_in_outer_gutter {
+        return Ok(true);
+    }
+
+    let is_expanded = logical_height > COLLAPSED_HEIGHT + OUTER_GUTTER * 2.0 + 20.0;
+    Ok(is_expanded && local_y > OUTER_GUTTER + CLICK_THROUGH_INTERACTIVE_HEIGHT)
 }
 
 #[cfg(target_os = "macos")]

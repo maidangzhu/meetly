@@ -56,92 +56,96 @@ export function App() {
 
   return (
     <main className="flex h-screen w-screen items-start justify-center overflow-hidden bg-transparent">
-      <div className={`relative h-full w-full transition-[padding] duration-150 ${ctx.isStealthOn ? "p-1.5" : "p-0"}`}>
+      <div className="relative h-full w-full p-2.5">
         {ctx.isStealthOn && (
           <div
-            className="pointer-events-none absolute inset-1 rounded-2xl border border-dashed border-[#38d879]/55 shadow-[0_0_0_1px_rgb(56_216_121_/_0.08)]"
+            className="pointer-events-none absolute inset-1 rounded-[18px] border border-dashed border-[#38d879]/55 shadow-[0_0_0_1px_rgb(56_216_121_/_0.08)]"
             aria-hidden="true"
           />
         )}
 
-        <section
-          className={`flex h-[54px] w-full min-w-0 select-none items-center gap-2 rounded-xl p-2 transition-transform duration-150 ${
+        <div
+          className={`relative h-full w-full origin-top transition-transform duration-150 ${
             ctx.isStealthOn ? "scale-[0.985]" : "scale-100"
-          } ${CARD_SURFACE}`}
-          aria-label="Interview assistant island"
+          }`}
         >
-          <button
-            className={`${SESSION_BUTTON} ${ctx.state === "listening" ? "bg-[#38d879]/20 text-[#38d879]" : ""}`}
-            title={ctx.state === "listening" ? "停止面试监听" : "开启面试监听"}
-            onClick={mic.toggleListening}
+          <section
+            className={`flex h-[54px] w-full min-w-0 select-none items-center gap-2 rounded-xl p-2 ${CARD_SURFACE}`}
+            aria-label="Interview assistant island"
           >
-            {ctx.state === "listening" ? <MicOff /> : <Mic />}
-            <span>{ctx.state === "listening" ? "结束" : "开始"}</span>
-          </button>
+            <button
+              className={`${SESSION_BUTTON} ${ctx.state === "listening" ? "bg-[#38d879]/20 text-[#38d879]" : ""}`}
+              title={ctx.state === "listening" ? "停止面试监听" : "开启面试监听"}
+              onClick={mic.toggleListening}
+            >
+              {ctx.state === "listening" ? <MicOff /> : <Mic />}
+              <span>{ctx.state === "listening" ? "结束" : "开始"}</span>
+            </button>
 
-          <span
-            className={`h-full w-1.5 shrink-0 self-stretch ${DRAG_CURSOR}`}
-            onMouseDown={windowActions.startIslandDrag}
-          />
+            <span
+              className={`h-full w-1.5 shrink-0 self-stretch ${DRAG_CURSOR}`}
+              onMouseDown={windowActions.startIslandDrag}
+            />
 
-          <div className="flex h-[38px] min-w-0 flex-1 items-center gap-2.5">
-            {ctx.state === "listening" ? (
-              <>
-                <AudioBars level={ctx.audioLevel} />
-                {ctx.autoAssistHint ? (
-                  <AutoAssistChip
-                    askAssistant={assistant.askAssistant}
-                    dismissAutoAssistHint={session.dismissAutoAssistHint}
-                    prefetchStatus={ctx.prefetchStatus}
-                    hint={ctx.autoAssistHint}
-                  />
-                ) : (
-                  <ListeningStatusButton
-                    audioLevel={ctx.audioLevel}
-                    latestText={ctx.latestTranscript?.text ?? null}
-                    setPanel={windowActions.setPanel}
-                    statusLabel={windowActions.status.label}
-                    transcriptError={ctx.transcriptError}
-                  />
-                )}
-              </>
-            ) : (
-              <IdleStatusButton setPanel={windowActions.setPanel} />
-            )}
-          </div>
+            <div className="flex h-[38px] min-w-0 flex-1 items-center gap-2.5">
+              {ctx.state === "listening" ? (
+                <>
+                  <AudioBars level={ctx.audioLevel} />
+                  {ctx.autoAssistHint ? (
+                    <AutoAssistChip
+                      askAssistant={assistant.askAssistant}
+                      dismissAutoAssistHint={session.dismissAutoAssistHint}
+                      prefetchStatus={ctx.prefetchStatus}
+                      hint={ctx.autoAssistHint}
+                    />
+                  ) : (
+                    <ListeningStatusButton
+                      audioLevel={ctx.audioLevel}
+                      latestText={ctx.latestTranscript?.text ?? null}
+                      setPanel={windowActions.setPanel}
+                      statusLabel={windowActions.status.label}
+                      transcriptError={ctx.transcriptError}
+                    />
+                  )}
+                </>
+              ) : (
+                <IdleStatusButton setPanel={windowActions.setPanel} />
+              )}
+            </div>
 
-          <button
-            className={`${STEALTH_STATUS_BUTTON} ${ctx.isStealthOn ? "bg-[#38d879]/20 text-[#38d879]" : ""}`}
-            title={ctx.isStealthOn ? "当前 Undetectable，点击切换为 Detectable" : "当前 Detectable，点击切换为 Undetectable"}
-            aria-pressed={ctx.isStealthOn}
-            onClick={windowActions.toggleStealth}
-          >
-            {ctx.isStealthOn ? <EyeOff /> : <Eye />}
-            <span>{ctx.isStealthOn ? "Undetectable" : "Detectable"}</span>
-          </button>
+            <button
+              className={`${STEALTH_STATUS_BUTTON} ${ctx.isStealthOn ? "bg-[#38d879]/20 text-[#38d879]" : ""}`}
+              title={ctx.isStealthOn ? "当前 Undetectable，点击切换为 Detectable" : "当前 Detectable，点击切换为 Undetectable"}
+              aria-pressed={ctx.isStealthOn}
+              onClick={windowActions.toggleStealth}
+            >
+              {ctx.isStealthOn ? <EyeOff /> : <Eye />}
+              <span>{ctx.isStealthOn ? "Undetectable" : "Detectable"}</span>
+            </button>
 
-          <button className={GHOST_ICON_BUTTON} title="设置" onClick={windowActions.openSettings}>
-            <SettingsIcon />
-          </button>
+            <button className={GHOST_ICON_BUTTON} title="设置" onClick={windowActions.openSettings}>
+              <SettingsIcon />
+            </button>
 
-          <div
-            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-transparent text-white/60 transition-[background,color,transform] duration-150 hover:bg-white/[0.14] active:scale-[0.98] [&_svg]:h-4 [&_svg]:w-4 ${DRAG_CURSOR}`}
-            title="Drag island"
-            aria-label="Drag island"
-            onMouseDown={windowActions.startIslandDrag}
-          >
-            <GripVertical />
-          </div>
-        </section>
+            <div
+              className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-transparent text-white/60 transition-[background,color,transform] duration-150 hover:bg-white/[0.14] active:scale-[0.98] [&_svg]:h-4 [&_svg]:w-4 ${DRAG_CURSOR}`}
+              title="Drag island"
+              aria-label="Drag island"
+              onMouseDown={windowActions.startIslandDrag}
+            >
+              <GripVertical />
+            </div>
+          </section>
 
-        {ctx.openPanel && (
-          <AssistantPanel
-            ctx={ctx}
-            activeSessionTranscriptCount={session.activeSessionTranscriptCount}
-            closePanel={() => windowActions.setPanel(null)}
-            startIslandDrag={windowActions.startIslandDrag}
-          />
-        )}
+          {ctx.openPanel && (
+            <AssistantPanel
+              ctx={ctx}
+              activeSessionTranscriptCount={session.activeSessionTranscriptCount}
+              closePanel={() => windowActions.setPanel(null)}
+              startIslandDrag={windowActions.startIslandDrag}
+            />
+          )}
+        </div>
       </div>
     </main>
   );
@@ -247,7 +251,7 @@ function AssistantPanel({
   startIslandDrag: ReturnType<typeof useWindowActions>["startIslandDrag"];
 }) {
   return (
-    <section className="absolute top-[62px] max-h-[calc(100vh-70px)] w-full overflow-hidden rounded-xl border border-white/10 bg-[rgb(27_27_28_/_0.82)] shadow-[0_18px_48px_rgb(0_0_0_/_0.28)] backdrop-blur-3xl">
+    <section className="absolute bottom-2 top-[62px] flex w-full flex-col overflow-hidden rounded-xl border border-white/10 bg-[rgb(27_27_28_/_0.82)] shadow-[0_10px_18px_rgb(0_0_0_/_0.22)] backdrop-blur-3xl">
       <div className="flex h-14 items-center justify-between border-b border-white/[0.08] bg-white/[0.04] px-3 py-2.5">
         <div className={`min-w-0 flex-1 ${DRAG_CURSOR}`} onMouseDown={startIslandDrag}>
           <p className="m-0 text-[11px] text-white/60">MVP 0.1</p>
@@ -258,7 +262,7 @@ function AssistantPanel({
         </button>
       </div>
 
-      <div className="h-[calc(600px-62px-56px)] overflow-auto p-3.5">
+      <div className="min-h-0 flex-1 overflow-auto p-3.5">
         <AssistantPreview
           state={ctx.state}
           transcriptHistory={ctx.transcriptHistory}

@@ -1,350 +1,195 @@
 # Meetly
 
-一个面向中文会议、面试、销售沟通场景的极简桌面辅助 MVP。
-
-这个 README 是项目总规范。后续写代码、拆任务、做验收，先以这里为准；更详细的方案放在 `docs/`。
-
-## 1. 产品定位
-
-第一版只验证一个闭环：
+Meetly 是一个 macOS 桌面悬浮面试辅助 MVP。当前目标不是做完整会议 SaaS，而是先把一个高频闭环跑顺：
 
 ```text
-顶部悬浮灵动岛
-  -> 监听会议系统音频
-  -> 实时中文转写
-  -> 用户一键 Ask
-  -> 给出可以直接说出口的短建议
-  -> 截图分析时自动隐藏灵动岛
+打开悬浮岛
+  -> 点击开始，持续使用麦克风监听一场面试/对话
+  -> 小段音频持续转写
+  -> Enter 获取可直接说出口的建议
+  -> 旁观者 agent 持续给短提示
+  -> 结束后生成 Markdown 复盘报告
 ```
 
-第一版不是：
+项目基于 `Tauri v2 + Rust + React/TypeScript`，定位是 local-first、BYOK、macOS first。
 
-- 会议知识库。
-- 团队协作 SaaS。
-- 自动代替用户开会的机器人。
-- 本地 Whisper 安装器。
-- 反检测/绕过工具。
-- 大而全 dashboard。
+## 当前状态
 
-## 2. 第一版硬决策
+已经跑通或已实现：
 
-- 客户端：`Tauri v2 + Rust + React/TypeScript`。
-- 架构：local-first desktop app。
-- 账号：P0 不登录、不注册、不扣点。
-- 模型接入：P0 纯 BYOK。
-- 云端：P0 没有我们的业务云端。
-- 平台：第一版只支持 macOS；Windows/Linux 不做兼容、不预留实现。
-- 音频：P0 优先采集系统音频，不做 mic + system 双通道。
-- STT：P0 选国内云端实时 STT，优先阿里云百炼/Model Studio 实时语音识别。
-- LLM：P0 使用 OpenAI-compatible Provider，用户填 base URL、model、API Key。
-- 本地 Whisper：P2，不进第一版。
-- 隐藏：P0 必须做，但只能承诺 best-effort，不承诺所有录屏软件 100% 不可见。
+- 顶部居中的悬浮岛壳子，包含展开/收起、拖拽、设置入口。
+- macOS `NSPanel` + `contentProtected` 隐藏模式。
+- `Detectable / Undetectable` 状态切换；Undetectable 时外层显示虚线框。
+- 展开面板：建议区、旁观者 agent、转写区。
+- 麦克风开启面试监听：`getUserMedia -> MediaRecorder -> STT -> transcript`。
+- VAD 小段切分，降低每次等待完整长录音的延迟。
+- Enter 触发建议，录音不会中断。
+- LLM 流式输出。
+- PI runtime 侧边旁观者 agent，生命周期跟随当前会话。
+- 会议/面试结束后生成 Markdown 复盘报告，保存到 `~/.meetly/reports/`。
+- 设置页支持 STT/LLM Provider 的 base URL、model、API key。
+- 本地调试日志写入文件，方便排查 STT/LLM/录音链路。
 
-## 3. BYOK 和数据边界
+还没稳定或尚未完成：
 
-P0 采用 BYOK，即用户使用自己的 STT/LLM API Key。
+- 系统音频采集仍是高风险项。CoreAudio Process Tap + 聚合设备代码存在，但紫色系统音频录制标识和 IOProc 数据流还需要继续验证。
+- 当前主路径优先使用麦克风监听，系统音频不是默认可依赖路径。
+- 截图/问屏幕还不是当前交互主线。
+- 隐藏模式只能做 best-effort，不能承诺所有录屏、会议软件 100% 不可见。
+- Provider 设置中的 API key 目前为本机开发体验写入 `~/.meetly/secrets.json`，权限 `0600`，不是正式版安全方案。
 
-调用路径：
+## 运行
 
-```text
-用户电脑
-  -> Rust Provider Client
-  -> 用户自己的 STT Provider
-  -> 用户自己的 LLM Provider
+环境要求：
+
+- macOS
+- Node.js + pnpm
+- Rust toolchain
+- Xcode Command Line Tools
+
+安装依赖：
+
+```bash
+pnpm install
 ```
 
-本地安全存储：
+启动 Tauri 开发版：
 
-- STT API Key。
-- LLM API Key。
-- Secret Key。
-
-本地普通存储：
-
-- Provider 类型。
-- Base URL。
-- Model 名称。
-- 快捷键。
-- 窗口位置。
-- UI 偏好。
-- 隐藏模式开关。
-
-默认不存：
-
-- 完整音频。
-- 完整截图。
-- 完整会议记录。
-
-P0 云端不存：
-
-- 用户账号。
-- API Key。
-- 音频。
-- 截图。
-- 转写历史。
-- 用量/扣点。
-
-## 4. 交互和样式基准
-
-第一版交互和样式明确对标 Pluely。
-
-必须满足：
-
-- 顶部居中。
-- 默认窗口 `600 x 54`。
-- 展开窗口高度 `600`。
-- 透明、无边框、always-on-top。
-- 主 UI 是一张横向紧凑 Card。
-- 左侧：系统音频入口。
-- 中间：Ask 输入、转写 ticker 或音频可视化。
-- 右侧：截图、状态、拖拽手柄。
-- 图标按钮约 `36 x 36`。
-- icon 约 `16 x 16`。
-- Popover/panel 从灵动岛下方展开。
-- 收起态不能因为文本变化抖动。
-- 不做 landing page、hero、营销式大页面、卡片套卡片。
-
-悬浮窗口技术路线：
-
-```text
-Tauri WebviewWindow
-  -> transparent + frameless + always-on-top
-  -> macOS NSPanel enhancement
-  -> React Pluely-style island UI
+```bash
+pnpm tauri dev
 ```
 
-## 5. 隐藏和录屏保护口径
+前端构建检查：
 
-隐藏必须做，但产品和技术口径必须准确。
-
-可以承诺：
-
-- 本应用自己的截图链路必须不包含灵动岛。
-- 截图分析前自动隐藏灵动岛，截图后恢复。
-- 使用系统能力尽量避免常见截图/录屏捕获灵动岛。
-- 设置页提供隐藏诊断。
-
-不能承诺：
-
-- 100% 隐身。
-- 所有录屏软件都看不到。
-- 所有会议软件共享屏幕都不会显示。
-
-P0 技术组合：
-
-- Tauri `contentProtected`。
-- macOS `NSWindow.sharingType = .none`。
-- macOS `NSPanel`。
-- 内部截图前主动 hide window。
-
-产品文案必须使用：
-
-```text
-隐藏模式会尽量避免悬浮窗出现在常见截图和录屏中。不同系统版本和录屏软件行为不同，无法保证所有场景都不可见。
+```bash
+pnpm build
 ```
 
-## 6. 架构分层
+Rust 检查：
 
-工程分四层：
-
-```text
-Presentation Layer
-  -> Application Layer
-  -> Native Capability Layer
-  -> Provider / Infrastructure Layer
+```bash
+cd src-tauri
+cargo check
 ```
 
-规则：
+## Provider 配置
 
-- React 只负责 UI 和交互。
-- React 不直接调用 STT/LLM。
-- React 不持有 API Key 明文。
-- Tauri command 只做参数校验和调用 service。
-- Service 负责业务编排。
-- Native layer 负责窗口、音频、截图、隐藏、快捷键。
-- Provider layer 负责 STT/LLM 适配。
-- Storage layer 负责本地配置和安全存储。
+Meetly 当前使用 OpenAI-compatible 风格的 STT/LLM provider。
 
-推荐模块：
+默认 STT：
 
 ```text
+base_url: https://api.siliconflow.cn/v1/audio/transcriptions
+model: FunAudioLLM/SenseVoiceSmall
+```
+
+默认 LLM：
+
+```text
+base_url: https://api.siliconflow.cn/v1/chat/completions
+model: Qwen/Qwen3-32B
+```
+
+可以在设置页切换到其他 OpenAI-compatible 服务，例如 DeepSeek 兼容代理。API key 不会回传给前端读取，只用于请求时发给 provider。
+
+开发环境也支持从环境变量 seed：
+
+```text
+STT_API_KEY
+LLM_API_KEY
+OPENAI_API_KEY
+```
+
+## 本地数据
+
+当前本地文件主要在 `~/.meetly/`：
+
+- `secrets.json`：开发期 API key 存储，`0600` 权限。
+- `reports/`：每次会话结束后的 Markdown 复盘报告。
+- debug log：用于排查录音、转写、LLM、agent 触发链路。
+
+当前默认不做：
+
+- 上传到 Meetly 自己的业务云端。
+- 用户账号体系。
+- 服务端扣点。
+- 长期保存完整原始音频。
+
+## 交互原则
+
+当前产品先服务“面试辅助”：
+
+- 点击左侧开始按钮后进入持续监听。
+- 按 Enter 只是请求建议，不会停止录音。
+- 不按 Enter 时，旁观者 agent 也可以基于转写上下文给短提示。
+- 展开面板里建议和旁观者内容要始终可见，转写可以滚动。
+- 大面板区域尽量允许点击穿透，避免共享屏幕时影响底层应用操作。
+- Undetectable 状态通过虚线外框表达，而不是只依赖眼睛图标含义。
+
+产品路线是：
+
+```text
+面试辅助
+  -> 会议辅助
+  -> 问屏幕 / 问上下文
+  -> 带 memory 和工具调用的个人办公 agent
+```
+
+## 架构
+
+代码分层：
+
+```text
+src/
+  App.tsx
+  app/                 # React hooks, state, session orchestration
+  components/          # UI components
+  runtime/             # PI observer runtime
+
 src-tauri/src/
-  commands/
-  app/
-  native/
-  providers/
-  storage/
-  domain/
+  app/                 # assistant/report service
+  audio/               # mic/system audio, VAD, wav, transcript buffer
+  domain/              # assistant domain types
+  providers/           # STT/LLM config, storage, OpenAI-compatible clients
+  window.rs            # NSPanel, positioning, stealth, click-through
+  debug_log.rs
 ```
 
-关键设计模式：
+重要约束：
 
-- Provider Adapter。
-- Platform Strategy。
-- Service Layer。
-- Command Handler。
-- Event-driven UI。
-- State Machine。
-- Repository。
-- RAII Guard。
-- Prompt Orchestrator。
+- React 负责 UI 和交互，不直接持久化 API key。
+- Rust/Tauri command 负责 native capability 和 provider 调用。
+- Provider 错误必须能落到用户可读提示和调试日志。
+- 日志不能包含 Authorization header 或完整 API key。
+- 前端单文件尽量保持在 500 行以内。
 
-## 7. 开发节奏
+## 文档入口
 
-不要一次性把所有功能做完。
+- [PRD](./docs/PRD.md)
+- [Product Roadmap](./docs/PRODUCT_ROADMAP.md)
+- [Technical Design](./docs/TECHNICAL_DESIGN.md)
+- [MVP Delivery Plan](./docs/MVP_DELIVERY_PLAN.md)
+- [Floating Island Design](./docs/FLOATING_ISLAND_DESIGN.md)
+- [Stealth and Screen Capture](./docs/STEALTH_AND_SCREEN_CAPTURE.md)
+- [Reference Projects](./docs/REFERENCE_PROJECTS.md)
 
-采用小版本、小闭环推进：
+OpenSpec 变更记录在 `openspec/changes/`：
 
-```text
-0.1 工程骨架 + 空灵动岛
-0.2 Pluely-style 悬浮窗 + 展开收起 + 拖拽
-0.3 隐藏模式 + 截图前隐藏 + 隐藏诊断
-0.4 Mock audio + Mock STT + Mock LLM
-0.5 系统音频捕获 + 音量可视化
-0.6 阿里云 STT + 实时转写
-0.7 Ask LLM + 回答建议
-0.8 截图分析 + Vision LLM
-0.9 BYOK 设置 + 安全存储 + 打包准备
-1.0 第一个可试用 MVP
-```
+- `stabilize-interview-assist-p0`
+- `add-interview-auto-assist-p1`
+- `add-system-audio-transcription`
+- `add-provider-settings`
+- `add-llm-suggestions`
 
-每个版本都必须：
+## 验收重点
 
-- 能启动。
-- 能手动验证。
-- 不破坏上一版能力。
-- 有明确验收项。
-- 发现风险后及时回写文档。
+每次改动至少确认：
 
-## 8. OpenSpec 工作流
-
-采用规格驱动开发思路。
-
-目录建议：
-
-```text
-openspec/
-  project.md
-  specs/
-    floating-island/spec.md
-    stealth-capture/spec.md
-    system-audio/spec.md
-    stt-provider/spec.md
-    llm-assistant/spec.md
-    byok-settings/spec.md
-  changes/
-    add-floating-island-shell/
-      proposal.md
-      design.md
-      tasks.md
-      specs/floating-island/spec.md
-```
-
-规则：
-
-- `specs/` 表示当前系统事实。
-- `changes/` 表示准备实现的变更。
-- 一个 change 只解决一个明确小闭环。
-- 开工前先写 proposal/design/tasks。
-- 实现时按 tasks 推进。
-- 验证通过后 archive，并更新主 specs。
-
-不要用“把 MVP 做完”作为任务名。任务必须像：
-
-```text
-add-tauri-shell
-add-floating-island-window
-add-pluely-style-toolbar
-add-island-expand-collapse
-add-stealth-capture-guard
-add-mock-audio-provider
-add-aliyun-stt-provider
-add-assistant-ask-flow
-add-byok-settings-storage
-```
-
-## 9. Definition of Done
-
-每个功能做完必须满足：
-
-- 代码实现完成。
-- UI 状态完整。
-- loading/empty/error/disabled 状态完整。
-- 关键错误有用户可读提示。
-- 日志不泄露 API Key。
-- 前端不持有 API Key 明文。
-- Provider 错误码能进入诊断。
-- 本地手动测试通过。
-- 相关文档/spec 更新。
-- 没有破坏已有功能。
-
-系统能力功能还必须满足：
-
-- macOS 真机测试。
-- 截图不包含灵动岛。
-- 失败后窗口能恢复。
-- 后台任务可取消。
-- App 退出能清理音频流/WebSocket。
-
-## 10. 高风险项优先验证
-
-先做 spike，不要等 UI 全做完才验证。
-
-最高风险：
-
-- macOS 系统音频捕获。
-- macOS NSPanel + content protection。
-- 截图前隐藏稳定性。
-- 阿里云实时 STT 延迟。
-- 多 Space/全屏会议窗口下悬浮行为。
-- 权限流程。
-- Provider mock 和状态机。
-
-这些没跑通之前，不要大规模堆设置页、历史记录、复杂 dashboard。
-
-## 11. 测试要求
-
-P0 至少要有：
-
-- Rust 单元测试。
-- Provider mock 测试。
-- Tauri command 集成验证。
-- UI 组件基础测试。
-- Playwright 截图检查。
-- macOS 真机手动测试。
-- 隐藏/录屏测试矩阵。
-- 30 分钟连续监听稳定性测试。
-
-悬浮窗回归测试：
-
-- 连续展开/收起 50 次不尺寸错乱。
-- 拖拽后位置可保存。
-- 输入框可正常 focus。
-- 按钮点击不被 drag region 吃掉。
-- 文本超长不撑破工具条。
-- 截图失败也能恢复窗口。
-
-## 12. 代码评审硬规则
-
-- UI 组件不能出现 API Key 明文。
-- Provider 不能直接 emit UI event，必须经过 service。
-- Command 不能包含复杂业务编排。
-- 系统 API 不能散落在业务 service 中。
-- 截图链路必须使用隐藏 guard。
-- 所有 Provider 错误必须映射成统一 `AppError`。
-- 新增 Provider 必须实现统一 trait。
-- 新增平台能力必须放到 `native/<capability>/<platform>.rs`。
-- 日志不能包含 Authorization header。
-- stop/cancel/exit 必须清理后台任务。
-
-## 13. 文档入口
-
-- [PRD.md](./docs/PRD.md)
-- [TECHNICAL_DESIGN.md](./docs/TECHNICAL_DESIGN.md)
-- [ARCHITECTURE_PATTERNS.md](./docs/ARCHITECTURE_PATTERNS.md)
-- [FLOATING_ISLAND_DESIGN.md](./docs/FLOATING_ISLAND_DESIGN.md)
-- [PLUELY_STYLE_SPEC.md](./docs/PLUELY_STYLE_SPEC.md)
-- [STEALTH_AND_SCREEN_CAPTURE.md](./docs/STEALTH_AND_SCREEN_CAPTURE.md)
-- [STT_PROVIDERS.md](./docs/STT_PROVIDERS.md)
-- [MVP_DELIVERY_PLAN.md](./docs/MVP_DELIVERY_PLAN.md)
-- [REFERENCE_PROJECTS.md](./docs/REFERENCE_PROJECTS.md)
+- `pnpm build` 通过。
+- `cargo check` 通过。
+- 开始/结束麦克风监听没有回归。
+- Enter 建议不会读取过期上下文。
+- 展开/收起后窗口位置和尺寸不漂移。
+- Detectable/Undetectable 外框不裁切、不遮内容。
+- 大面板点击穿透不影响顶部交互。
+- API key 不进入 git、日志、报告。
