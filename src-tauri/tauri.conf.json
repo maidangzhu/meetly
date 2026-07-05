@@ -13,6 +13,18 @@
     "macOSPrivateApi": true,
     "windows": [
       {
+        "label": "settings",
+        "title": "Meetly Settings",
+        "url": "settings.html",
+        "width": 480,
+        "height": 560,
+        "minWidth": 420,
+        "minHeight": 480,
+        "visible": false,
+        "center": true,
+        "backgroundColor": "#1b1b1c"
+      },
+      {
         "label": "island",
         "title": "Meetly",
         "width": 600,
@@ -38,7 +50,10 @@
     }
   },
   "bundle": {
-    "active": false,
-    "targets": "all"
+    "active": true,
+    "targets": "all",
+    "macOS": {
+      "infoPlist": "Info.plist"
+    }
   }
 }

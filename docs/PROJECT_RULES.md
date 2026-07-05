@@ -16,6 +16,12 @@
 - Keep business buttons separate from draggable surfaces so clicks and drags do not compete.
 - Do not allow text selection in the top floating bar.
 
+## Platform Scope
+
+- Meetly is macOS-only for the current product scope.
+- Do not add Windows/Linux compatibility modules, dependencies, fallback code, or documentation promises unless the product scope changes explicitly.
+- Native audio capture should use the macOS CoreAudio path only.
+
 ## Git Tags
 
 - Use annotated tags for milestone checkpoints, not lightweight tags.

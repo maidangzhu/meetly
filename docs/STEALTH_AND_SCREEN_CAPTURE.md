@@ -13,7 +13,6 @@
 官方参考：
 
 - Apple NSWindow sharing type none: https://developer.apple.com/documentation/appkit/nswindow/sharingtype-swift.enum/none
-- Microsoft SetWindowDisplayAffinity: https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowdisplayaffinity
 - Tauri window config/content protection: https://v2.tauri.app/reference/config/
 - Apple ScreenCaptureKit: https://developer.apple.com/documentation/screencapturekit/
 
@@ -83,39 +82,9 @@ P0 不使用私有 API。
 - 第一版目标是可交付 MVP，不是做绕过工具。
 - 如果未来要研究更强隐藏，只能作为实验分支，不能作为稳定产品承诺。
 
-## 3. Windows 方案
+## 3. 非目标平台
 
-使用 `SetWindowDisplayAffinity`：
-
-```cpp
-SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
-```
-
-作用：
-
-- Windows 10 Version 2004 起支持从屏幕捕获中排除窗口。
-
-限制：
-
-- 必须是当前进程窗口。
-- 依赖 DWM 和具体捕获方式。
-- 老版本系统会退化。
-
-Tauri/Rust 实现：
-
-- 获取 WebView 窗口 HWND。
-- 调用 `windows` crate 封装的 Win32 API。
-- 调用失败时把 `GetLastError` 显示在诊断页。
-
-## 4. Linux 方案
-
-P0 不承诺 Linux 隐藏。
-
-原因：
-
-- X11/Wayland/合成器差异大。
-- 捕获栈分散。
-- MVP 不应被 Linux 桌面兼容性拖住。
+Windows/Linux 不在当前产品范围内，不做隐藏方案、测试矩阵或诊断项。
 
 ## 5. 诊断功能
 
@@ -125,7 +94,6 @@ P0 不承诺 Linux 隐藏。
 
 - 当前窗口是否启用 `contentProtected`。
 - macOS 是否成功设置 NSPanel。
-- Windows 是否成功设置 display affinity。
 - 本应用截图测试结果。
 - 用户手动录屏测试清单。
 
@@ -142,7 +110,7 @@ P0 不承诺 Linux 隐藏。
 
 必须测：
 
-- macOS 当前开发机版本。
+- macOS 当前开发机版本：15.6.1（Sequoia）。
 - 系统截图快捷键。
 - QuickTime 录屏。
 - Zoom screen share。
@@ -159,19 +127,9 @@ P0 不承诺 Linux 隐藏。
 | QuickTime | 待测 | 待测 | |
 | Zoom | 待测 | 待测 | |
 | 腾讯会议 | 待测 | 待测 | |
-| 飞书会议 | 待测 | 待测 | |
+| 飞书会议录制 | 否 | 待测 | 2026-07-04 实测通过，`set_stealth`(contentProtected) 生效 |
+| 微信截图 | 否 | 待测 | 2026-07-04 实测通过，`set_stealth`(contentProtected) 生效 |
 | OBS | 待测 | 待测 | |
-
-### 6.2 Windows
-
-必须测：
-
-- Windows 10 22H2。
-- Windows 11。
-- 系统截图。
-- Xbox Game Bar。
-- OBS Display Capture。
-- 腾讯会议/飞书会议共享。
 
 ## 7. 产品文案边界
 
@@ -193,8 +151,6 @@ P0 必须完成：
 
 - Tauri `contentProtected`。
 - macOS NSPanel。
-- Windows display affinity 封装。
 - 内部截图前隐藏。
 - 诊断页展示保护状态。
 - 产品文案不做绝对承诺。
-

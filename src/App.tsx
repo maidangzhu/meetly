@@ -1,175 +1,52 @@
 import {
-  AlertCircle,
-  AudioLines,
-  Camera,
   ChevronDown,
+  Eye,
+  EyeOff,
   GripVertical,
-  Headphones,
   Loader2,
+  MessageSquare,
+  Mic,
+  MicOff,
+  Settings as SettingsIcon,
   Sparkles,
+  X,
 } from "lucide-react";
-import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
-
-type IslandState = "idle" | "listening" | "transcribing" | "thinking" | "error";
-type OpenPanel = null | "assistant" | "audio" | "diagnostics";
-type AudioRunState = "idle" | "listening" | "setup_required" | "error";
-
-type AudioStatus = {
-  state: AudioRunState;
-  platform: string;
-  inputDevice: string | null;
-  outputDevice: string | null;
-  setupRequired: boolean;
-  message: string | null;
-};
-
-const CARD_SURFACE =
-  "border border-white/10 bg-[rgb(27_27_28_/_0.82)] shadow-[0_8px_24px_rgb(0_0_0_/_0.16)] backdrop-blur-[20px]";
-const ICON_BUTTON =
-  "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border-0 bg-white/[0.08] text-[#f5f5f5] transition-[background,color,transform] duration-150 hover:bg-white/[0.14] active:scale-[0.98] [&_svg]:h-4 [&_svg]:w-4";
-const GHOST_ICON_BUTTON =
-  "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border-0 bg-transparent text-white/60 transition-[background,color,transform] duration-150 hover:bg-white/[0.14] active:scale-[0.98] [&_svg]:h-4 [&_svg]:w-4";
-const DRAG_CURSOR = "cursor-grab active:cursor-grabbing";
-
-const isTauriRuntime = () => "__TAURI_INTERNALS__" in window;
-
-async function safeInvoke<T>(command: string, args?: Record<string, unknown>) {
-  if (!isTauriRuntime()) {
-    return undefined as T;
-  }
-
-  return invoke<T>(command, args);
-}
+import {
+  CARD_SURFACE,
+  DRAG_CURSOR,
+  GHOST_ICON_BUTTON,
+  SESSION_BUTTON,
+  STEALTH_STATUS_BUTTON,
+} from "./app/constants";
+import { questionKindLabel } from "./app/interviewLogic";
+import { useAssistantAsk } from "./app/useAssistantAsk";
+import { useAutoAssist } from "./app/useAutoAssist";
+import { useMeetlyState } from "./app/useMeetlyState";
+import { useMicMeeting } from "./app/useMicMeeting";
+import { usePiCoach } from "./app/usePiCoach";
+import { useSessionActions } from "./app/useSessionActions";
+import { useTauriEvents } from "./app/useTauriEvents";
+import { useWindowActions } from "./app/useWindowActions";
+import { AssistantPreview } from "./components/AssistantPreview";
+import { AudioBars } from "./components/AudioBars";
 
 export function App() {
-  const [state, setState] = useState<IslandState>("idle");
-  const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
-  const [isHidden, setIsHidden] = useState(false);
-  const [audioStatus, setAudioStatus] = useState<AudioStatus | null>(null);
+  const ctx = useMeetlyState();
+  const session = useSessionActions(ctx);
+  const windowActions = useWindowActions(ctx);
+  const piCoach = usePiCoach(ctx);
+  const autoAssist = useAutoAssist(ctx, session);
+  const mic = useMicMeeting(ctx, autoAssist, session, windowActions);
+  const assistant = useAssistantAsk(ctx, session, windowActions, mic.flushCurrentMicSegment);
 
-  const isExpanded = openPanel !== null;
+  useTauriEvents(ctx, autoAssist, piCoach, session);
 
-  const startIslandDrag = useCallback(async (event: MouseEvent<HTMLElement>) => {
-    if (event.button !== 0 || !isTauriRuntime()) {
-      return;
-    }
-
-    event.preventDefault();
-
-    try {
-      await getCurrentWindow().startDragging();
-    } catch (error) {
-      console.error("Failed to start island drag:", error);
-    }
-  }, []);
-
-  const resizeIsland = useCallback(async (expanded: boolean) => {
-    await safeInvoke("set_island_height", { height: expanded ? 600 : 54 });
-  }, []);
-
-  const setPanel = useCallback(
-    async (panel: OpenPanel) => {
-      setOpenPanel(panel);
-      await resizeIsland(panel !== null);
-    },
-    [resizeIsland]
-  );
-
-  const applyAudioStatus = useCallback((status: AudioStatus | undefined) => {
-    if (!status) {
-      return;
-    }
-
-    setAudioStatus(status);
-
-    if (status.state === "listening") {
-      setState("listening");
-      return;
-    }
-
-    if (status.state === "setup_required" || status.state === "error") {
-      setState("error");
-      setOpenPanel("diagnostics");
-      void resizeIsland(true);
-      return;
-    }
-
-    setState("idle");
-  }, [resizeIsland]);
-
-  const refreshAudioStatus = useCallback(async () => {
-    const status = await safeInvoke<AudioStatus>("get_audio_status");
-    applyAudioStatus(status);
-  }, [applyAudioStatus]);
-
-  useEffect(() => {
-    void refreshAudioStatus();
-  }, [refreshAudioStatus]);
-
-  const toggleListening = useCallback(async () => {
-    setState((current) => (current === "listening" ? "idle" : "thinking"));
-
-    const command = audioStatus?.state === "listening" ? "stop_listening" : "start_listening";
-    const status = await safeInvoke<AudioStatus>(command);
-
-    applyAudioStatus(status);
-  }, [applyAudioStatus, audioStatus?.state]);
-
-  const toggleHidden = useCallback(async () => {
-    setIsHidden((current) => !current);
-    await safeInvoke("set_island_visible", { visible: isHidden });
-  }, [isHidden]);
-
-  const status = useMemo(() => {
-    if (state === "error") {
-      return {
-        icon: <AlertCircle className="h-3.5 w-3.5 text-[#ff5c70]" />,
-        label: "Setup needed",
-        className: "text-[#ff5c70]",
-      };
-    }
-
-    if (state === "thinking") {
-      return {
-        icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />,
-        label: "Generating...",
-        className: "text-white/70",
-      };
-    }
-
-    if (state === "transcribing") {
-      return {
-        icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />,
-        label: "Transcribing...",
-        className: "text-white/70",
-      };
-    }
-
-    if (state === "listening") {
-      return {
-        icon: (
-          <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#38d879] shadow-[0_0_0_0_rgb(56_216_121_/_0.42)] [animation:listening-dot-pulse_1.4s_infinite]" />
-        ),
-        label: "Listening...",
-        className: "text-[#38d879]",
-      };
-    }
-
-    return {
-      icon: null,
-      label: "Ready",
-      className: "text-white/60",
-    };
-  }, [state]);
-
-  if (isHidden) {
+  if (ctx.isHidden) {
     return (
       <div className="flex h-screen w-screen items-start justify-center overflow-hidden bg-transparent pointer-events-none">
         <button
           className="pointer-events-auto mt-2 rounded-xl border border-white/10 bg-[rgb(27_27_28_/_0.82)] px-3 py-2 text-white"
-          onClick={toggleHidden}
+          onClick={windowActions.toggleHidden}
         >
           Show
         </button>
@@ -179,215 +56,224 @@ export function App() {
 
   return (
     <main className="flex h-screen w-screen items-start justify-center overflow-hidden bg-transparent">
-      <section
-        className={`flex h-[54px] w-full min-w-0 select-none items-center gap-2 rounded-xl p-2 ${CARD_SURFACE}`}
-        aria-label="Meeting assistant island"
-      >
-        <button
-          className={`${ICON_BUTTON} ${
-            state === "listening" ? "bg-[#38d879]/20 text-[#38d879]" : ""
-          }`}
-          title={state === "listening" ? "Stop listening" : "Start listening"}
-          onClick={toggleListening}
-        >
-          {state === "listening" ? <AudioLines /> : <Headphones />}
-        </button>
+      <div className={`relative h-full w-full transition-[padding] duration-150 ${ctx.isStealthOn ? "p-1.5" : "p-0"}`}>
+        {ctx.isStealthOn && (
+          <div
+            className="pointer-events-none absolute inset-1 rounded-2xl border border-dashed border-[#38d879]/55 shadow-[0_0_0_1px_rgb(56_216_121_/_0.08)]"
+            aria-hidden="true"
+          />
+        )}
 
-        <span
-          className={`h-full w-1.5 shrink-0 self-stretch ${DRAG_CURSOR}`}
-          onMouseDown={startIslandDrag}
-        />
-
-        <div
-          className={`flex h-[38px] min-w-0 flex-1 items-center gap-2.5 ${
-            state === "listening" ? DRAG_CURSOR : ""
-          }`}
-          onMouseDown={state === "listening" ? startIslandDrag : undefined}
-        >
-          {state === "listening" ? (
-            <>
-              <AudioBars />
-              <p className="m-0 min-w-0 flex-1 truncate text-[13px] text-white/70">
-                正在等待会议音频，实时转写会显示在这里
-              </p>
-            </>
-          ) : (
-            <button
-              className="flex h-9 w-full min-w-0 items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.06] px-2.5 text-left text-white/80"
-              onClick={() => setPanel(isExpanded ? null : "assistant")}
-              title="Open assistant panel"
-            >
-              <Sparkles className="h-[15px] w-[15px] shrink-0" />
-              <span className="min-w-0 flex-1 truncate">Ask...</span>
-              <ChevronDown
-                className={`h-[15px] w-[15px] shrink-0 text-white/60 transition-transform duration-150 ${
-                  isExpanded ? "rotate-180" : ""
-                }`}
-              />
-            </button>
-          )}
-        </div>
-
-        <button
-          className={ICON_BUTTON}
-          title="Capture screenshot"
-          onClick={() => setPanel("assistant")}
-        >
-          <Camera />
-        </button>
-
-        <span
-          className={`h-full w-1.5 shrink-0 self-stretch ${DRAG_CURSOR}`}
-          onMouseDown={startIslandDrag}
-        />
-
-        <button
-          className={GHOST_ICON_BUTTON}
-          title="Open diagnostics"
-          onClick={() => setPanel(openPanel === "diagnostics" ? null : "diagnostics")}
-        >
-          {status.icon}
-          {!status.icon && <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-white/40" />}
-        </button>
-
-        <div
-          className={`flex max-w-32 items-center gap-[7px] truncate whitespace-nowrap text-xs font-medium ${DRAG_CURSOR} ${status.className}`}
-          onMouseDown={startIslandDrag}
-        >
-          {status.icon}
-          <span className="truncate">{status.label}</span>
-        </div>
-
-        <div
-          className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-transparent text-white/60 transition-[background,color,transform] duration-150 hover:bg-white/[0.14] active:scale-[0.98] [&_svg]:h-4 [&_svg]:w-4 ${DRAG_CURSOR}`}
-          title="Drag island"
-          aria-label="Drag island"
-          onMouseDown={startIslandDrag}
-        >
-          <GripVertical />
-        </div>
-      </section>
-
-      {openPanel && (
         <section
-          className={`absolute top-[62px] max-h-[calc(100vh-70px)] w-full overflow-hidden rounded-xl border border-white/10 bg-[rgb(27_27_28_/_0.82)] shadow-[0_18px_48px_rgb(0_0_0_/_0.28)] backdrop-blur-3xl`}
+          className={`flex h-[54px] w-full min-w-0 select-none items-center gap-2 rounded-xl p-2 transition-transform duration-150 ${
+            ctx.isStealthOn ? "scale-[0.985]" : "scale-100"
+          } ${CARD_SURFACE}`}
+          aria-label="Interview assistant island"
         >
-          <div className="flex h-14 items-center justify-between border-b border-white/[0.08] bg-white/[0.04] px-3 py-2.5">
-            <div className={`min-w-0 flex-1 ${DRAG_CURSOR}`} onMouseDown={startIslandDrag}>
-              <p className="m-0 text-[11px] text-white/60">MVP 0.1</p>
-              <h1 className="m-0 text-sm leading-tight">
-                {openPanel === "diagnostics" ? "Diagnostics" : "Assistant"}
-              </h1>
-            </div>
-            <button className={GHOST_ICON_BUTTON} onClick={() => setPanel(null)}>
-              <ChevronDown className="rotate-180" />
-            </button>
-          </div>
+          <button
+            className={`${SESSION_BUTTON} ${ctx.state === "listening" ? "bg-[#38d879]/20 text-[#38d879]" : ""}`}
+            title={ctx.state === "listening" ? "停止面试监听" : "开启面试监听"}
+            onClick={mic.toggleListening}
+          >
+            {ctx.state === "listening" ? <MicOff /> : <Mic />}
+            <span>{ctx.state === "listening" ? "结束" : "开始"}</span>
+          </button>
 
-          <div className="h-[calc(600px-62px-56px)] overflow-auto p-3.5">
-            {openPanel === "diagnostics" ? (
-              <Diagnostics audioStatus={audioStatus} />
+          <span
+            className={`h-full w-1.5 shrink-0 self-stretch ${DRAG_CURSOR}`}
+            onMouseDown={windowActions.startIslandDrag}
+          />
+
+          <div className="flex h-[38px] min-w-0 flex-1 items-center gap-2.5">
+            {ctx.state === "listening" ? (
+              <>
+                <AudioBars level={ctx.audioLevel} />
+                {ctx.autoAssistHint ? (
+                  <AutoAssistChip
+                    askAssistant={assistant.askAssistant}
+                    dismissAutoAssistHint={session.dismissAutoAssistHint}
+                    prefetchStatus={ctx.prefetchStatus}
+                    hint={ctx.autoAssistHint}
+                  />
+                ) : (
+                  <ListeningStatusButton
+                    audioLevel={ctx.audioLevel}
+                    latestText={ctx.latestTranscript?.text ?? null}
+                    setPanel={windowActions.setPanel}
+                    statusLabel={windowActions.status.label}
+                    transcriptError={ctx.transcriptError}
+                  />
+                )}
+              </>
             ) : (
-              <AssistantPreview state={state} />
+              <IdleStatusButton setPanel={windowActions.setPanel} />
             )}
           </div>
+
+          <button
+            className={`${STEALTH_STATUS_BUTTON} ${ctx.isStealthOn ? "bg-[#38d879]/20 text-[#38d879]" : ""}`}
+            title={ctx.isStealthOn ? "当前 Undetectable，点击切换为 Detectable" : "当前 Detectable，点击切换为 Undetectable"}
+            aria-pressed={ctx.isStealthOn}
+            onClick={windowActions.toggleStealth}
+          >
+            {ctx.isStealthOn ? <EyeOff /> : <Eye />}
+            <span>{ctx.isStealthOn ? "Undetectable" : "Detectable"}</span>
+          </button>
+
+          <button className={GHOST_ICON_BUTTON} title="设置" onClick={windowActions.openSettings}>
+            <SettingsIcon />
+          </button>
+
+          <div
+            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-transparent text-white/60 transition-[background,color,transform] duration-150 hover:bg-white/[0.14] active:scale-[0.98] [&_svg]:h-4 [&_svg]:w-4 ${DRAG_CURSOR}`}
+            title="Drag island"
+            aria-label="Drag island"
+            onMouseDown={windowActions.startIslandDrag}
+          >
+            <GripVertical />
+          </div>
         </section>
-      )}
+
+        {ctx.openPanel && (
+          <AssistantPanel
+            ctx={ctx}
+            activeSessionTranscriptCount={session.activeSessionTranscriptCount}
+            closePanel={() => windowActions.setPanel(null)}
+            startIslandDrag={windowActions.startIslandDrag}
+          />
+        )}
+      </div>
     </main>
   );
 }
 
-function AudioBars() {
-  return (
-    <div className="flex h-[26px] w-[116px] shrink-0 items-center gap-1 overflow-hidden" aria-hidden="true">
-      {Array.from({ length: 18 }).map((_, index) => (
-        <span
-          key={index}
-          className="min-h-1 w-[3px] rounded-full bg-white/70 [animation:audio-bar-pulse_920ms_ease-in-out_infinite_alternate]"
-          style={{ animationDelay: `${index * 55}ms` }}
-        />
-      ))}
-    </div>
-  );
-}
-
-function AssistantPreview({ state }: { state: IslandState }) {
-  return (
-    <>
-      <div className="mb-3 rounded-xl border border-white/[0.08] bg-white/[0.05] p-3.5">
-        <p className="m-0 text-[11px] text-white/60">当前阶段</p>
-        <p className="m-0 text-[13px] leading-normal text-white/70">
-          这是 0.1 的空灵动岛骨架。音频、STT、LLM、BYOK 会在后续小版本按
-          OpenSpec change 逐步接入。
-        </p>
-      </div>
-      <div className="mb-3 rounded-xl border border-white/[0.08] bg-white/[0.05] p-3.5">
-        <p className="m-0 text-[11px] text-white/60">Pluely-style 验收</p>
-        <ul className="mt-2 list-disc pl-[18px]">
-          <li className="text-[13px] leading-normal text-white/70">顶部居中 600 x 54 收起态。</li>
-          <li className="text-[13px] leading-normal text-white/70">横向 Card、图标按钮、拖拽手柄。</li>
-          <li className="text-[13px] leading-normal text-white/70">展开后保持 600px 宽度，面板从下方出现。</li>
-        </ul>
-      </div>
-      <p className="m-0 text-[11px] text-white/60">Current state: {state}</p>
-    </>
-  );
-}
-
-function Diagnostics({ audioStatus }: { audioStatus: AudioStatus | null }) {
-  return (
-    <div className="grid grid-cols-1 gap-2.5">
-      <DiagnosticItem label="Tauri shell" value="Ready" state="ok" />
-      <DiagnosticItem label="Island window" value="600 x 54" state="ok" />
-      <DiagnosticItem
-        label="Audio state"
-        value={audioStatus ? audioStatus.state : "Checking..."}
-        state={audioStatus?.setupRequired ? "pending" : "ok"}
-      />
-      <DiagnosticItem
-        label="Output device"
-        value={audioStatus?.outputDevice ?? "Not found"}
-        state={audioStatus?.outputDevice ? "ok" : "pending"}
-      />
-      <DiagnosticItem
-        label="Input device"
-        value={audioStatus?.inputDevice ?? "Not found"}
-        state={audioStatus?.inputDevice ? "ok" : "pending"}
-      />
-      <DiagnosticItem
-        label="Platform"
-        value={audioStatus?.platform ?? "Unknown"}
-        state={audioStatus ? "ok" : "pending"}
-      />
-      {audioStatus?.message && (
-        <DiagnosticItem label="Audio message" value={audioStatus.message} state="pending" />
-      )}
-      <DiagnosticItem label="Stealth guard" value="Not implemented" state="pending" />
-      <DiagnosticItem label="BYOK storage" value="Not implemented" state="pending" />
-    </div>
-  );
-}
-
-function DiagnosticItem({
-  label,
-  value,
-  state,
+function AutoAssistChip({
+  askAssistant,
+  dismissAutoAssistHint,
+  hint,
+  prefetchStatus,
 }: {
-  label: string;
-  value: string;
-  state: "ok" | "pending";
+  askAssistant: () => Promise<void>;
+  dismissAutoAssistHint: () => void;
+  hint: NonNullable<ReturnType<typeof useMeetlyState>["autoAssistHint"]>;
+  prefetchStatus: ReturnType<typeof useMeetlyState>["prefetchStatus"];
 }) {
   return (
-    <div className="flex items-center gap-2.5 rounded-xl border border-white/[0.08] bg-white/[0.05] p-3">
-      <span
-        className={`h-[9px] w-[9px] shrink-0 rounded-full ${
-          state === "ok" ? "bg-[#38d879]" : "bg-white/30"
-        }`}
-      />
-      <div>
-        <p className="m-0 mb-0.5 text-[13px] font-semibold">{label}</p>
-        <span className="text-[13px] leading-normal text-white/70">{value}</span>
-      </div>
+    <div className="flex min-w-0 flex-1 items-center gap-1.5" onMouseDown={(event) => event.stopPropagation()}>
+      <button
+        className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg border border-[#38d879]/25 bg-[#38d879]/12 px-2.5 text-left text-[13px] text-[#dfffea] transition-colors duration-150 hover:bg-[#38d879]/18"
+        title={hint.candidate.text}
+        onClick={askAssistant}
+      >
+        <Sparkles className="h-[14px] w-[14px] shrink-0" />
+        <span className="min-w-0 flex-1 truncate">
+          {questionKindLabel(hint.candidate.kind)} · 按 Enter 获取建议
+        </span>
+        {prefetchStatus === "prefetching" && (
+          <Loader2 className="h-[13px] w-[13px] shrink-0 animate-spin text-white/60" />
+        )}
+        {prefetchStatus === "ready" && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#38d879]" />}
+      </button>
+      <button
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.06] text-white/50 hover:bg-white/[0.12] hover:text-white/80 [&_svg]:h-3.5 [&_svg]:w-3.5"
+        title="忽略提示"
+        onClick={dismissAutoAssistHint}
+      >
+        <X />
+      </button>
     </div>
+  );
+}
+
+function ListeningStatusButton({
+  audioLevel,
+  latestText,
+  setPanel,
+  statusLabel,
+  transcriptError,
+}: {
+  audioLevel: number;
+  latestText: string | null;
+  setPanel: (panel: "assistant") => Promise<void>;
+  statusLabel: string;
+  transcriptError: string | null;
+}) {
+  return (
+    <button
+      className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg bg-transparent px-1 text-left transition-colors duration-150 hover:bg-white/[0.06]"
+      title="打开会话面板"
+      onClick={() => setPanel("assistant")}
+    >
+      <span className="shrink-0 rounded-md bg-[#38d879]/12 px-1.5 py-0.5 text-[11px] font-medium text-[#7ff0a0]">
+        {statusLabel}
+      </span>
+      <p className="m-0 min-w-0 flex-1 truncate text-[13px] text-white/70">
+        {transcriptError
+          ? `转写失败：${transcriptError}`
+          : latestText ?? (audioLevel > 0.015 ? "正在通过麦克风监听面试/对话" : "正在监听，等待语音")}
+      </p>
+    </button>
+  );
+}
+
+function IdleStatusButton({
+  setPanel,
+}: {
+  setPanel: (panel: "assistant") => Promise<void>;
+}) {
+  return (
+    <button
+      className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg bg-transparent px-1 text-left transition-colors duration-150 hover:bg-white/[0.06]"
+      title="打开会话面板"
+      onClick={() => setPanel("assistant")}
+    >
+      <MessageSquare className="h-4 w-4 shrink-0 text-white/55" />
+      <span className="min-w-0 flex-1 truncate text-[13px] text-white/60">
+        打开会话面板
+      </span>
+    </button>
+  );
+}
+
+function AssistantPanel({
+  activeSessionTranscriptCount,
+  closePanel,
+  ctx,
+  startIslandDrag,
+}: {
+  activeSessionTranscriptCount: number;
+  closePanel: () => void;
+  ctx: ReturnType<typeof useMeetlyState>;
+  startIslandDrag: ReturnType<typeof useWindowActions>["startIslandDrag"];
+}) {
+  return (
+    <section className="absolute top-[62px] max-h-[calc(100vh-70px)] w-full overflow-hidden rounded-xl border border-white/10 bg-[rgb(27_27_28_/_0.82)] shadow-[0_18px_48px_rgb(0_0_0_/_0.28)] backdrop-blur-3xl">
+      <div className="flex h-14 items-center justify-between border-b border-white/[0.08] bg-white/[0.04] px-3 py-2.5">
+        <div className={`min-w-0 flex-1 ${DRAG_CURSOR}`} onMouseDown={startIslandDrag}>
+          <p className="m-0 text-[11px] text-white/60">MVP 0.1</p>
+          <h1 className="m-0 text-sm leading-tight">Assistant</h1>
+        </div>
+        <button className={GHOST_ICON_BUTTON} onClick={closePanel}>
+          <ChevronDown className="rotate-180" />
+        </button>
+      </div>
+
+      <div className="h-[calc(600px-62px-56px)] overflow-auto p-3.5">
+        <AssistantPreview
+          state={ctx.state}
+          transcriptHistory={ctx.transcriptHistory}
+          assistantSuggestion={ctx.assistantSuggestion}
+          assistantDraft={ctx.assistantDraft}
+          assistantError={ctx.assistantError}
+          isAsking={ctx.isAsking}
+          coachMessages={ctx.coachMessages}
+          coachDraft={ctx.coachDraft}
+          isCoachThinking={ctx.isCoachThinking}
+          activeSessionTranscriptCount={activeSessionTranscriptCount}
+          autoAssistHint={ctx.autoAssistHint}
+          prefetchStatus={ctx.prefetchStatus}
+        />
+      </div>
+    </section>
   );
 }

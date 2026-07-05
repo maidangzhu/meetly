@@ -7,3 +7,7 @@ src-tauri/gen/
 *.log
 
 docs/learn/
+
+# Local dev-only provider credentials. Never commit real API keys.
+.env
+.env.*

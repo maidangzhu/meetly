@@ -1,13 +1,22 @@
 use tauri::{App, Manager, PhysicalPosition, Position, WebviewWindow};
+use std::time::Duration;
 
-const ISLAND_WIDTH: f64 = 600.0;
+const COLLAPSED_WIDTH: f64 = 600.0;
+const EXPANDED_WIDTH: f64 = 920.0;
 const COLLAPSED_HEIGHT: f64 = 54.0;
+const CLICK_THROUGH_INTERACTIVE_HEIGHT: f64 = 122.0;
 const TOP_OFFSET: i32 = 54;
 
 #[tauri::command]
 pub fn set_island_height(window: WebviewWindow, height: u32) -> Result<(), String> {
-    let size = tauri::LogicalSize::new(ISLAND_WIDTH, height as f64);
+    let width = if height as f64 > COLLAPSED_HEIGHT {
+        EXPANDED_WIDTH
+    } else {
+        COLLAPSED_WIDTH
+    };
+    let size = tauri::LogicalSize::new(width, height as f64);
     window.set_size(size).map_err(|error| error.to_string())?;
+    position_top_center(&window).map_err(|error| error.to_string())?;
     Ok(())
 }
 
@@ -23,6 +32,37 @@ pub fn set_island_visible(window: WebviewWindow, visible: bool) -> Result<(), St
     Ok(())
 }
 
+/// Toggles whether this window's contents can be captured by other apps
+/// (screenshots, screen recording, screen sharing).
+///
+/// On macOS this maps to `NSWindow.sharingType`: `enabled` sets it to
+/// `.none`, which excludes the window from `CGWindowListCreateImage` and
+/// most window-capture-based recording tools. It does NOT reliably hide the
+/// window from capture paths built on ScreenCaptureKit (macOS 15+ Sequoia,
+/// used by newer Zoom/Teams/Loom builds), since SCK reads from the
+/// compositor framebuffer rather than respecting per-window sharing type.
+/// See docs/STEALTH_AND_SCREEN_CAPTURE.md for the full test matrix and the
+/// product-copy constraints (never promise "always invisible").
+#[tauri::command]
+pub fn set_stealth(window: WebviewWindow, enabled: bool) -> Result<(), String> {
+    window
+        .set_content_protected(enabled)
+        .map_err(|error| error.to_string())
+}
+
+/// Opens (and focuses) the Settings window. It stays hidden until the user
+/// asks for it, since it's a plain window and shouldn't appear on launch
+/// alongside the floating island.
+#[tauri::command]
+pub fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
+    let Some(window) = app.get_webview_window("settings") else {
+        return Err("Settings window not found".to_string());
+    };
+    window.show().map_err(|error| error.to_string())?;
+    window.set_focus().map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 pub fn setup_island_window(app: &mut App) -> tauri::Result<()> {
     let Some(window) = app.get_webview_window("island") else {
         return Ok(());
@@ -31,18 +71,18 @@ pub fn setup_island_window(app: &mut App) -> tauri::Result<()> {
     #[cfg(target_os = "macos")]
     setup_macos_panel(&window);
 
+    window.set_size(tauri::LogicalSize::new(
+        COLLAPSED_WIDTH,
+        COLLAPSED_HEIGHT,
+    ))?;
     position_top_center(&window)?;
+    start_click_through_guard(window.clone());
 
     Ok(())
 }
 
 fn position_top_center(window: &WebviewWindow) -> tauri::Result<()> {
-    window.set_size(tauri::LogicalSize::new(
-        ISLAND_WIDTH,
-        COLLAPSED_HEIGHT,
-    ))?;
-
-    if let Some(monitor) = window.primary_monitor()? {
+    if let Some(monitor) = window.current_monitor()?.or(window.primary_monitor()?) {
         let monitor_position = monitor.position();
         let monitor_size = monitor.size();
         let window_size = window.outer_size()?;
@@ -72,13 +112,56 @@ fn clamp_i32(value: i32, min: i32, max: i32) -> i32 {
     value.max(min).min(max)
 }
 
+fn start_click_through_guard(window: WebviewWindow) {
+    tauri::async_runtime::spawn(async move {
+        let mut last_ignore = false;
+
+        loop {
+            let should_ignore = should_ignore_cursor_events(&window).unwrap_or(false);
+            if should_ignore != last_ignore {
+                let _ = window.set_ignore_cursor_events(should_ignore);
+                last_ignore = should_ignore;
+            }
+
+            tokio::time::sleep(Duration::from_millis(30)).await;
+        }
+    });
+}
+
+fn should_ignore_cursor_events(window: &WebviewWindow) -> Result<bool, String> {
+    let size = window.outer_size().map_err(|error| error.to_string())?;
+    let is_expanded = size.height as f64 > COLLAPSED_HEIGHT + 20.0;
+    if !is_expanded {
+        return Ok(false);
+    }
+
+    let position = window.outer_position().map_err(|error| error.to_string())?;
+    let cursor = window.cursor_position().map_err(|error| error.to_string())?;
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+
+    let left = position.x as f64;
+    let top = position.y as f64;
+    let right = left + size.width as f64;
+    let bottom = top + size.height as f64;
+
+    let is_inside = cursor.x >= left && cursor.x <= right && cursor.y >= top && cursor.y <= bottom;
+    if !is_inside {
+        return Ok(false);
+    }
+
+    let local_y = (cursor.y - top) / scale;
+    Ok(local_y > CLICK_THROUGH_INTERACTIVE_HEIGHT)
+}
+
 #[cfg(target_os = "macos")]
 fn setup_macos_panel(window: &WebviewWindow) {
     use tauri_nspanel::{
         cocoa::appkit::NSWindowCollectionBehavior, panel_delegate, WebviewWindowExt,
     };
 
-    let panel = window.to_panel().expect("failed to convert window to NSPanel");
+    let panel = window
+        .to_panel()
+        .expect("failed to convert window to NSPanel");
 
     #[allow(non_upper_case_globals)]
     const NSFloatWindowLevel: i32 = 4;

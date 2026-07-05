@@ -33,7 +33,7 @@
 - 账号：P0 不登录、不注册、不扣点。
 - 模型接入：P0 纯 BYOK。
 - 云端：P0 没有我们的业务云端。
-- 首发平台：macOS 优先，Windows 跟进，Linux 不做 P0 承诺。
+- 平台：第一版只支持 macOS；Windows/Linux 不做兼容、不预留实现。
 - 音频：P0 优先采集系统音频，不做 mic + system 双通道。
 - STT：P0 选国内云端实时 STT，优先阿里云百炼/Model Studio 实时语音识别。
 - LLM：P0 使用 OpenAI-compatible Provider，用户填 base URL、model、API Key。
@@ -110,7 +110,6 @@ P0 云端不存：
 Tauri WebviewWindow
   -> transparent + frameless + always-on-top
   -> macOS NSPanel enhancement
-  -> Windows display affinity enhancement
   -> React Pluely-style island UI
 ```
 
@@ -136,7 +135,6 @@ P0 技术组合：
 - Tauri `contentProtected`。
 - macOS `NSWindow.sharingType = .none`。
 - macOS `NSPanel`。
-- Windows `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`。
 - 内部截图前主动 hide window。
 
 产品文案必须使用：

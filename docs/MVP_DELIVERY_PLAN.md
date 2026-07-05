@@ -2,9 +2,11 @@
 
 ## 1. 交付原则
 
-第一版只验证一个闭环：
+第一版先验证一个面试辅助闭环：
 
-> 悬浮灵动岛听到会议内容，转成文字，用户一键拿到可以直接说出口的建议，并且自己的截图链路不会把灵动岛截进去。
+> 悬浮灵动岛通过麦克风持续听到面试/高压问答内容，转成文字，用户一键拿到可以直接说出口的建议。
+
+后续再扩展到会议记录、问屏幕、memory 和个人办公 agent。路线见 [PRODUCT_ROADMAP.md](./PRODUCT_ROADMAP.md)。
 
 所有不能服务这个闭环的功能都延后。
 
@@ -65,7 +67,6 @@
 目标：
 
 - macOS Core Audio 系统音频捕获。
-- Windows WASAPI loopback 预留或实现。
 - 统一 PCM 输出。
 - 音量状态显示。
 - 捕获失败可恢复。
@@ -82,7 +83,6 @@
 
 - `contentProtected`。
 - macOS sharing type / panel 设置。
-- Windows display affinity 封装。
 - 截图前隐藏，截图后恢复。
 - 设置页隐藏测试。
 
@@ -111,13 +111,15 @@
 目标：
 
 - OpenAI-compatible LLM adapter。
-- Ask 快捷键。
+- Ask/Enter 快捷键。
 - 面试/会议模式 prompt。
 - 简短结构化建议。
 
 验收：
 
-- Ask 基于最近转写生成回答。
+- 监听已经开启时，Ask/Enter 基于最近转写生成回答。
+- Ask/Enter 不停止、不暂停、不重启系统音频采集或 STT。
+- Ask 失败或超时时，转写继续进入最近上下文，用户可以重试。
 - 首 token 小于 4 秒为目标。
 - 超时可重试。
 
@@ -139,7 +141,6 @@
 目标：
 
 - macOS 可安装包。
-- Windows 可运行包可选。
 - 日志和诊断足够定位问题。
 
 验收：
@@ -253,19 +254,21 @@ thinking
 
 - macOS 灵动岛。
 - 隐藏模式。
-- 系统音频。
+- 系统音频持续监听。
 - 阿里云 STT。
-- LLM 建议。
+- 手动触发 LLM 建议：用户按 Ask/Enter 时读取滚动 transcript，生成“现在该怎么回应”。
 - 截图分析。
 - 设置和诊断。
+- 不做自动抢答，不做自动弹大答案。
 
 ### P1
 
-- Windows WASAPI + display affinity。
 - 腾讯云 STT adapter。
 - 保存会议记录。
 - mic + system 双通道。
 - 更好的 VAD。
+- 自动会议摘要：每累计若干条 final transcript 或每隔固定时间刷新一次摘要/关键点/建议问题。
+- 轻量自动提示：检测到明显问题句时只显示 `Press Enter for help` 级别的低干扰提示。
 
 ### P2
 
@@ -274,3 +277,39 @@ thinking
 - RAG。
 - 日历/会议软件集成。
 - 团队版。
+- 可选 auto assist：基于置信度、冷却时间和 planner 的自动建议，但默认关闭。
+
+## 10. 会议辅助交互分层
+
+### P0: 持续转写，手动协助
+
+会议开始后，`start_listening()` 进入持续监听状态。系统音频、VAD、STT 和 transcript buffer 持续运行，直到用户显式停止监听或退出会议。
+
+Ask/Enter 是独立的协助触发器：
+
+- 读取最近 90-180 秒 transcript。
+- 调用 LLM 生成短建议。
+- 不影响音频采集任务。
+- 不清空 transcript buffer。
+- 不要求用户重新录制问题。
+
+P0 的体验目标是稳定、可控、低打扰：用户决定什么时候让 AI 出声。
+
+### P1: 自动摘要和轻提示
+
+在不打断会议的前提下，后台可以基于 transcript 自动刷新辅助信息：
+
+- 每 5 条 final transcript 或每 60 秒刷新会议摘要。
+- 展示关键点、可能的后续问题、下一步行动。
+- 如果检测到明确问题句，只在灵动岛上显示轻提示，例如 `Question detected · Press Enter`。
+
+P1 不自动展开完整答案。
+
+### P2: 可选自动协助
+
+成熟后再考虑默认关闭的 auto assist：
+
+- 只在高置信度问题句上触发。
+- 必须有冷却时间，避免连续刷屏。
+- planner 可以选择 `silent`、`clarify`、`recap`、`follow_up_questions` 或 `answer`。
+- 自动生成的内容要能被用户一键忽略或收起。

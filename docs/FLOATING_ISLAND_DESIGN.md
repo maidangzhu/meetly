@@ -10,7 +10,6 @@
 Tauri WebviewWindow
   -> transparent + frameless + always-on-top
   -> macOS NSPanel enhancement
-  -> Windows display affinity enhancement
   -> React Pluely-style island UI
 ```
 
@@ -18,7 +17,7 @@ Tauri WebviewWindow
 
 - 原生窗口负责系统级行为。
 - React 负责视觉和交互。
-- Rust 负责窗口控制、隐藏、截图前恢复、跨平台差异。
+- Rust 负责 macOS 窗口控制、隐藏、截图前恢复。
 - 第一版交互和样式对标 Pluely。
 
 ## 2. 目标形态
@@ -155,35 +154,9 @@ NSWindow.sharingType = .none
 - macOS panel 使用 non-activating style。
 - 输入框需要时显式 focus。
 
-## 6. Windows 原生增强
+## 6. 非目标平台
 
-### 6.1 窗口保护
-
-Windows 使用：
-
-```text
-SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE)
-```
-
-作用：
-
-- 在 Windows 10 2004+ 上尽量从屏幕捕获中排除该窗口。
-
-边界：
-
-- 老系统退化。
-- 部分捕获链路仍可能可见。
-- 诊断页必须显示设置是否成功。
-
-### 6.2 窗口层级
-
-使用 Tauri always-on-top，必要时补 Win32 topmost。
-
-目标：
-
-- 在会议软件和浏览器上方。
-- 不进入任务栏。
-- 不抢主窗口焦点。
+Windows/Linux 不在当前产品范围内，不做 display affinity、Win32 topmost、Linux 合成器适配或相关诊断。
 
 ## 7. 前端 UI 结构
 
@@ -389,7 +362,6 @@ capture_request
 
 - Tauri `contentProtected`。
 - macOS `NSWindow.sharingType = .none`。
-- Windows `WDA_EXCLUDEFROMCAPTURE`。
 - 内部截图前主动 hide。
 
 ## 11. 状态机
@@ -432,7 +404,7 @@ TemporarilyHiddenForCapture -> previous visible state: restore
 | 音频入口 | SystemAudio button | 采用并改中文场景 |
 | 状态 | StatusIndicator | 采用 |
 | 截图 | Screenshot button | 采用并加截图前隐藏 |
-| 隐藏 | contentProtected | 采用并补 NSWindow/Win32 |
+| 隐藏 | contentProtected | 采用并补 macOS NSWindow |
 
 ## 13. 验收标准
 
@@ -465,11 +437,7 @@ macOS：
 - 跨 Space 尽量可见。
 - content protection 生效。
 
-Windows：
-
-- always-on-top 生效。
-- taskbar 不显示。
-- display affinity 设置成功时诊断可见。
+Windows/Linux：非目标，不验收。
 
 ### 13.4 回归测试
 
@@ -479,4 +447,3 @@ Windows：
 - 按钮点击不被 drag region 吃掉。
 - 截图失败也能恢复窗口。
 - 文本超长不撑破工具条。
-

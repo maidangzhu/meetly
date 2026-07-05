@@ -112,7 +112,7 @@ src-tauri/src/native/
 职责：
 
 - 封装系统 API。
-- 屏蔽 macOS/Windows 差异。
+- 封装 macOS 原生能力。
 - 给 Application Layer 提供稳定接口。
 
 模块：
@@ -126,7 +126,7 @@ src-tauri/src/native/
 设计模式：
 
 - Facade: 对上提供统一能力。
-- Strategy: macOS/Windows 不同实现。
+- Strategy: 仅在 macOS 内部按能力拆分实现；不做 Windows/Linux 平台策略。
 - RAII Guard: 临时隐藏窗口后自动恢复。
 
 示例：
@@ -197,15 +197,12 @@ src-tauri/src/
     window/
       mod.rs
       macos.rs
-      windows.rs
     stealth/
       mod.rs
       macos.rs
-      windows.rs
     audio/
       mod.rs
       macos_coreaudio.rs
-      windows_wasapi.rs
       vad.rs
     screenshot/
       mod.rs
@@ -518,7 +515,7 @@ shortcut_task
 | 场景 | 模式 | 用法 |
 |---|---|---|
 | STT/LLM 多服务商 | Adapter | 每个 Provider 适配成统一 trait |
-| macOS/Windows 系统能力差异 | Strategy | 按平台编译不同实现 |
+| macOS 原生能力拆分 | Strategy | 按窗口、音频、隐藏等能力拆分实现 |
 | 业务编排 | Service Layer | Assistant/Listening/Screenshot service |
 | 前端触发后端能力 | Command Handler | Tauri command 只调用 service |
 | 实时状态更新 | Event-driven | Rust emit event，React subscribe |
@@ -556,4 +553,3 @@ shortcut_task
 - 新增平台能力必须放到 `native/<capability>/<platform>.rs`。
 - 任何日志都不能包含 Authorization header。
 - stop/cancel/exit 必须清理后台任务。
-

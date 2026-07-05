@@ -10,6 +10,7 @@
 - Tauri v2 原生支持透明窗口、无边框窗口、`contentProtected`、插件体系和 Rust command。
 - 对比 Electron，Electron 做浮层和 Web UI 很快，但系统音频、NSPanel、录屏规避、窗口层级等仍然要写 native module。既然第一版已经明确要做“原生灵动岛 + 隐藏”，Tauri 更直接。
 - Pluely 的实现路径已经证明 Tauri + Rust 可行：透明窗口 + macOS NSPanel + Rust 音频捕获 + Web UI。
+- 平台范围明确收敛为 macOS-only；Windows/Linux 不做兼容、不预留实现。
 
 ## 2. 技术栈
 
@@ -49,17 +50,6 @@
 - Apple NSWindow sharing type none: https://developer.apple.com/documentation/appkit/nswindow/sharingtype-swift.enum/none
 - Apple Core Audio taps: https://developer.apple.com/documentation/CoreAudio/capturing-system-audio-with-core-audio-taps
 - Apple ScreenCaptureKit: https://developer.apple.com/documentation/screencapturekit/
-
-### 2.3 Windows 原生能力
-
-- Window capture protection: `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`
-- Audio: WASAPI loopback
-- Screenshot: Windows Graphics Capture 或跨平台截图库
-
-官方依据：
-
-- Microsoft SetWindowDisplayAffinity: https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowdisplayaffinity
-- Microsoft WASAPI loopback: https://learn.microsoft.com/en-us/windows/win32/coreaudio/loopback-recording
 
 ## 3. 架构
 
@@ -139,7 +129,6 @@ Rust commands：
 - 开启 Tauri `contentProtected`。
 - macOS 设置 NSWindow sharing type。
 - macOS 设置非激活 Panel，减少切换焦点痕迹。
-- Windows 设置 `WDA_EXCLUDEFROMCAPTURE`。
 - 自己截图前隐藏窗口。
 - 提供诊断截图。
 
@@ -148,7 +137,6 @@ Rust commands：
 - `contentProtected` 是基础，不是完整答案。
 - Apple 官方对 `NSWindowSharingNone` 明确提示：不要把它当成绝对隐藏手段。因此产品和技术都必须把它定义为 best-effort。
 - 自己的截图链路可控，所以必须做到 100% 不截到灵动岛。
-- Windows 10 Version 2004+ 才支持 `WDA_EXCLUDEFROMCAPTURE`；更早版本会退化。
 
 Rust commands：
 
@@ -167,15 +155,7 @@ macOS：
 - 捕获系统输出音频。
 - 需要处理权限、设备变化、采样率转换。
 
-Windows：
-
-- 使用 WASAPI loopback capture。
-- 从默认输出设备捕获系统播放音频。
-
-Linux：
-
-- P0 不承诺。
-- 后续可用 PulseAudio/PipeWire monitor source。
+Windows/Linux 不支持，不保留音频捕获实现。
 
 内部音频格式：
 
@@ -348,6 +328,8 @@ capture_request
 - Ask 默认取最近 90 秒。
 - 如果用户触发截图，取最近 180 秒。
 - 每条 transcript 带时间戳和 final/partial 状态。
+- `ask_assistant` 是只读 transcript buffer 的独立 LLM 请求；它不能 stop/restart audio capture，也不能阻塞 VAD/STT 任务。
+- Enter/Ask 的语义是“基于当前会议上下文求助”，不是“停止当前录音并发送这一段”。
 
 模式：
 
@@ -479,7 +461,7 @@ Rust 侧用 `tokio`。
 
 ## 9. 平台支持计划
 
-### 9.1 P0: macOS
+### 9.1 当前范围: macOS
 
 必须跑通：
 
@@ -490,19 +472,9 @@ Rust 侧用 `tokio`。
 - LLM。
 - 截图隐藏。
 
-### 9.2 P1: Windows
+### 9.2 非目标: Windows/Linux
 
-必须跑通：
-
-- 灵动岛。
-- `WDA_EXCLUDEFROMCAPTURE`。
-- WASAPI loopback。
-- STT。
-- LLM。
-
-### 9.3 P2: Linux
-
-不作为第一版承诺。
+不兼容、不预留、不写平台 fallback。后续只有在产品范围明确变化后再重新设计。
 
 ## 10. 未决问题与处理结论
 
@@ -514,4 +486,3 @@ Rust 侧用 `tokio`。
 | 要不要麦克风 | P0 不做。先捕获会议系统音频，解决对方问题转写。 |
 | 是否能 100% 规避录屏 | 不能承诺。实现 best-effort + 自己截图链路 100% 隐藏。 |
 | 国内 STT 选哪个 | P0 选阿里云百炼实时语音识别；腾讯云作为 P1 备选。 |
-
