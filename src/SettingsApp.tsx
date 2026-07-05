@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
+import { OnboardingPanel, type OnboardingStatus } from "./settings/OnboardingPanel";
+import { UpdateSection } from "./settings/UpdateSection";
 
 type ProviderKind = "stt" | "llm";
 
@@ -119,12 +121,18 @@ function ProviderSection({
   title,
   description,
   kind,
+  onSaved,
 }: {
   title: string;
   description: string;
   kind: ProviderKind;
+  onSaved?: () => void;
 }) {
   const section = useProviderSection(kind);
+  const save = async () => {
+    await section.save();
+    onSaved?.();
+  };
 
   return (
     <section className="mb-6 rounded-xl border border-white/[0.08] bg-white/[0.04] p-4">
@@ -164,7 +172,7 @@ function ProviderSection({
       </div>
 
       <div className="flex items-center gap-2">
-        <button className={PRIMARY_BUTTON} disabled={section.isSaving} onClick={() => void section.save()}>
+        <button className={PRIMARY_BUTTON} disabled={section.isSaving} onClick={() => void save()}>
           {section.isSaving ? "Saving..." : "Save"}
         </button>
         <button className={SECONDARY_BUTTON} disabled={section.isTesting} onClick={() => void section.test()}>
@@ -283,6 +291,21 @@ function DiagnosticItem({
 }
 
 export function SettingsApp() {
+  const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus | null>(null);
+
+  const loadOnboardingStatus = useCallback(async () => {
+    try {
+      const status = await invoke<OnboardingStatus>("get_onboarding_status");
+      setOnboardingStatus(status);
+    } catch (error) {
+      console.error("Failed to load onboarding status:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadOnboardingStatus();
+  }, [loadOnboardingStatus]);
+
   return (
     <div className="h-screen w-screen overflow-y-auto bg-[#1b1b1c] p-5">
       <h1 className="m-0 mb-1 text-base font-semibold">Meetly Settings</h1>
@@ -292,17 +315,42 @@ export function SettingsApp() {
         file.
       </p>
 
+      {!onboardingStatus?.completed && (
+        <OnboardingPanel
+          status={onboardingStatus}
+          onCompleted={() => void loadOnboardingStatus()}
+        />
+      )}
+
       <ProviderSection
         title="Speech-to-text"
-        description="Used to transcribe system audio segments. Any OpenAI-Whisper-compatible endpoint works."
+        description="Used to transcribe microphone audio segments. Any OpenAI-Whisper-compatible endpoint works."
         kind="stt"
+        onSaved={() => void loadOnboardingStatus()}
       />
       <ProviderSection
         title="Assistant (LLM)"
         description="Used to generate Ask suggestions from recent transcript. Any OpenAI-compatible chat completions endpoint works."
         kind="llm"
+        onSaved={() => void loadOnboardingStatus()}
       />
       <DiagnosticsSection />
+      <UpdateSection />
+      <FooterActions />
+    </div>
+  );
+}
+
+function FooterActions() {
+  const quit = () => {
+    void invoke("quit_app");
+  };
+
+  return (
+    <div className="pb-2">
+      <button className={SECONDARY_BUTTON} onClick={quit}>
+        Quit Meetly
+      </button>
     </div>
   );
 }

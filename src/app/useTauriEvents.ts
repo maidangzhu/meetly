@@ -102,7 +102,6 @@ export function useTauriEvents(
       void piCoach.runPiCoach({
         trigger: "manual_ask_done",
         latestAnswer: event.payload.answer,
-        force: true,
       });
     }).then((nextUnlisten) => {
       if (disposed) nextUnlisten();

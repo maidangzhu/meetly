@@ -52,8 +52,17 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "macOS": {
       "infoPlist": "Info.plist"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVENDlBRkFCQTUwOUI5NTUKUldSVnVRbWxxNjlKN2JodTgwbk5ocjdYaWdvdkQxYkJiZElrUnNNSjZ4elF3ZTIvNTZxV0RqZTQK",
+      "endpoints": [
+        "https://github.com/maidangzhu/meetly/releases/latest/download/latest.json"
+      ]
     }
   }
 }

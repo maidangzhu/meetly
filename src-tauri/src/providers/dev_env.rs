@@ -7,9 +7,12 @@
 //! saved (through Settings or a prior dev-env import), `.env` is ignored.
 //! `.env` itself is gitignored; see the repo root `.gitignore`.
 
-use super::config::{ProviderConfig, ProviderKind};
-use super::{secrets, storage};
 use tauri::AppHandle;
+
+#[cfg(debug_assertions)]
+use super::config::{ProviderConfig, ProviderKind};
+#[cfg(debug_assertions)]
+use super::{secrets, storage};
 
 /// Reads `.env` from the project root (one level up from `src-tauri`, via
 /// `CARGO_MANIFEST_DIR`) and imports STT/LLM config into the normal storage

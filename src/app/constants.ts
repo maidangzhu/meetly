@@ -23,5 +23,5 @@ export const AUTO_ASSIST_HINT_COOLDOWN_MS = 10_000;
 export const AUTO_ASSIST_DEDUPE_WINDOW_MS = 45_000;
 export const AUTO_ASSIST_CACHE_TTL_MS = 30_000;
 export const AUTO_ASSIST_PREFETCH_ENABLED = true;
-export const COACH_COOLDOWN_MS = 24_000;
+export const COACH_HEARTBEAT_MS = 10_000;
 export const COACH_MAX_MESSAGES = 8;

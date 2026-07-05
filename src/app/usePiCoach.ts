@@ -1,5 +1,5 @@
-import { useCallback } from "react";
-import { COACH_COOLDOWN_MS, COACH_MAX_MESSAGES } from "./constants";
+import { useCallback, useEffect, useRef } from "react";
+import { COACH_HEARTBEAT_MS, COACH_MAX_MESSAGES } from "./constants";
 import { buildPiCoachPrompt } from "./interviewLogic";
 import { createId, debugLog } from "./platform";
 import type { CoachMessage, CoachTrigger, QuestionCandidate } from "./types";
@@ -17,23 +17,16 @@ export function usePiCoach(ctx: MeetlyState) {
     trigger,
     candidate,
     latestAnswer,
-    force = false,
   }: {
     trigger: CoachTrigger;
     candidate?: QuestionCandidate;
     latestAnswer?: string;
-    force?: boolean;
   }) => {
     const session = ctx.interviewSessionRef.current;
     if (!session || session.endedAt) {
       return;
     }
 
-    const now = Date.now();
-    if (!force && now - ctx.lastCoachAtRef.current < COACH_COOLDOWN_MS) {
-      debugLog(`[pi] coach skipped reason=cooldown trigger=${trigger}`);
-      return;
-    }
     if (ctx.coachInFlightRef.current) {
       debugLog(`[pi] coach skipped reason=in_flight trigger=${trigger}`);
       return;
@@ -54,7 +47,7 @@ export function usePiCoach(ctx: MeetlyState) {
     };
 
     ctx.coachInFlightRef.current = true;
-    ctx.lastCoachAtRef.current = now;
+    ctx.lastCoachAtRef.current = Date.now();
     ctx.setIsCoachThinking(true);
     ctx.setCoachDraft(draft);
     debugLog(`[pi] coach start trigger=${trigger} session=${session.id}`);
@@ -87,6 +80,30 @@ export function usePiCoach(ctx: MeetlyState) {
       ctx.setIsCoachThinking(false);
     }
   }, [appendCoachMessage, ctx]);
+
+  const runPiCoachRef = useRef(runPiCoach);
+  useEffect(() => {
+    runPiCoachRef.current = runPiCoach;
+  }, [runPiCoach]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const session = ctx.interviewSessionRef.current;
+      if (!session || session.endedAt) {
+        return;
+      }
+
+      if (ctx.coachInFlightRef.current) {
+        debugLog("[pi] heartbeat skipped reason=in_flight");
+        return;
+      }
+
+      void runPiCoachRef.current({ trigger: "heartbeat" });
+    }, COACH_HEARTBEAT_MS);
+
+    return () => window.clearInterval(timer);
+    // Refs and React setters inside ctx are stable for the component lifetime.
+  }, []);
 
   return { runPiCoach };
 }

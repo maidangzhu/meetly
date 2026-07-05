@@ -17,9 +17,10 @@ import {
 import { debugLog, safeInvoke } from "./platform";
 import type { AssistantSuggestion, AutoAssistHint, PrefetchCache, QuestionCandidate, TranscriptSegment } from "./types";
 import type { MeetlyState } from "./useMeetlyState";
+import type { PiCoachActions } from "./usePiCoach";
 import type { SessionActions } from "./useSessionActions";
 
-export function useAutoAssist(ctx: MeetlyState, session: SessionActions) {
+export function useAutoAssist(ctx: MeetlyState, session: SessionActions, piCoach: PiCoachActions) {
   const startAutoAssistPrefetch = useCallback(async (candidate: QuestionCandidate) => {
     if (!AUTO_ASSIST_PREFETCH_ENABLED || candidate.confidence < AUTO_ASSIST_PREFETCH_CONFIDENCE) {
       return;
@@ -100,16 +101,20 @@ export function useAutoAssist(ctx: MeetlyState, session: SessionActions) {
       return;
     }
 
+    ctx.recentQuestionCandidatesRef.current = [...recentCandidates, candidate].slice(-12);
+    void piCoach.runPiCoach({
+      trigger: "question_detected",
+      candidate,
+    });
+
     const activeHint = ctx.autoAssistHintRef.current;
     const inCooldown = now - ctx.lastHintShownAtRef.current < AUTO_ASSIST_HINT_COOLDOWN_MS;
     const muchStronger = activeHint && candidate.confidence >= activeHint.candidate.confidence + 0.12;
     if (inCooldown && !muchStronger) {
       debugLog(`[auto] candidate ignored reason=cooldown candidate=${candidate.id} confidence=${candidate.confidence.toFixed(2)}`);
-      ctx.recentQuestionCandidatesRef.current = [...recentCandidates, candidate].slice(-12);
       return;
     }
 
-    ctx.recentQuestionCandidatesRef.current = [...recentCandidates, candidate].slice(-12);
     const hint: AutoAssistHint = {
       candidate,
       expiresAt: now + AUTO_ASSIST_HINT_TTL_MS,
@@ -119,7 +124,7 @@ export function useAutoAssist(ctx: MeetlyState, session: SessionActions) {
     session.updateInterviewSession((current) => ({ ...current, autoAssistCandidate: candidate }));
     debugLog(`[auto] hint shown candidate=${candidate.id} confidence=${candidate.confidence.toFixed(2)} kind=${candidate.kind} reason=${candidate.reason} text=${candidate.text.slice(0, 160).replace(/\n/g, " ")}`);
     void startAutoAssistPrefetch(candidate);
-  }, [ctx, session, startAutoAssistPrefetch]);
+  }, [ctx, piCoach, session, startAutoAssistPrefetch]);
 
   const addTranscriptSegment = useCallback((segment: TranscriptSegment) => {
     const normalizedSegment: TranscriptSegment = {

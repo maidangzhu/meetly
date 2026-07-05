@@ -107,7 +107,7 @@ export type PrefetchInFlight = {
 
 export type PrefetchStatus = "idle" | "prefetching" | "ready" | "error";
 
-export type CoachTrigger = "session_started" | "question_detected" | "manual_ask_done";
+export type CoachTrigger = "session_started" | "question_detected" | "manual_ask_done" | "heartbeat";
 
 export type CoachMessage = {
   id: string;

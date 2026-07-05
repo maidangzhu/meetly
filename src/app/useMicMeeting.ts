@@ -11,6 +11,7 @@ import { buildInterviewReportRequest, generateInterviewReport } from "./reportin
 import type { InterviewSession, TranscriptSegment } from "./types";
 import type { AutoAssistActions } from "./useAutoAssist";
 import type { MeetlyState } from "./useMeetlyState";
+import type { PiCoachActions } from "./usePiCoach";
 import type { SessionActions } from "./useSessionActions";
 import type { WindowActions } from "./useWindowActions";
 
@@ -18,7 +19,8 @@ export function useMicMeeting(
   ctx: MeetlyState,
   autoAssist: AutoAssistActions,
   session: SessionActions,
-  windowActions: WindowActions
+  windowActions: WindowActions,
+  piCoach: PiCoachActions
 ) {
   const transcribeMicChunk = useCallback(async (
     blob: Blob,
@@ -125,6 +127,7 @@ export function useMicMeeting(
     session.setCurrentInterviewSession(nextSession);
     debugLog(`[session] start id=${nextSession.id}`);
     debugLog("[mic] start requested");
+    void piCoach.runPiCoach({ trigger: "session_started" });
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -154,7 +157,7 @@ export function useMicMeeting(
       ctx.setAudioLevel(0);
       ctx.setState("error");
     }
-  }, [ctx, session, transcribeMicChunk, windowActions]);
+  }, [ctx, piCoach, session, transcribeMicChunk, windowActions]);
 
   const toggleListening = useCallback(async () => {
     if (ctx.micStreamRef.current) {

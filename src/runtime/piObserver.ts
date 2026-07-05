@@ -3,7 +3,7 @@ import { Agent } from "@earendil-works/pi-agent-core";
 import { streamSimple } from "@earendil-works/pi-ai/api/openai-completions";
 import type { Api, Model } from "@earendil-works/pi-ai";
 
-export type PiObserverTrigger = "session_started" | "question_detected" | "manual_ask_done";
+export type PiObserverTrigger = "session_started" | "question_detected" | "manual_ask_done" | "heartbeat";
 
 export type PiObserverRequest = {
   sessionId: string;

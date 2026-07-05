@@ -1,9 +1,12 @@
 mod app;
+mod app_state;
 mod audio;
 mod debug_log;
 mod domain;
 mod providers;
 mod window;
+
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -16,7 +19,9 @@ pub fn run() {
 
     let builder = tauri::Builder::default()
         .manage(audio::AudioState::default())
-        .plugin(tauri_plugin_opener::init());
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build());
 
     #[cfg(target_os = "macos")]
     let builder = builder.plugin(tauri_nspanel::init());
@@ -27,6 +32,10 @@ pub fn run() {
             window::set_island_visible,
             window::set_stealth,
             window::open_settings_window,
+            app_state::get_onboarding_status,
+            app_state::complete_onboarding,
+            app_state::open_external_url,
+            app_state::quit_app,
             audio::get_audio_status,
             audio::get_recent_transcript,
             audio::start_listening,
@@ -47,6 +56,12 @@ pub fn run() {
         .setup(|app| {
             window::setup_island_window(app)?;
             providers::dev_env::seed_from_dotenv_if_missing(app.handle());
+            if !app_state::is_onboarding_completed() {
+                if let Some(settings) = app.get_webview_window("settings") {
+                    settings.show()?;
+                    settings.set_focus()?;
+                }
+            }
             Ok(())
         })
         .run(tauri::generate_context!())

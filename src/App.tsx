@@ -35,8 +35,8 @@ export function App() {
   const session = useSessionActions(ctx);
   const windowActions = useWindowActions(ctx);
   const piCoach = usePiCoach(ctx);
-  const autoAssist = useAutoAssist(ctx, session);
-  const mic = useMicMeeting(ctx, autoAssist, session, windowActions);
+  const autoAssist = useAutoAssist(ctx, session, piCoach);
+  const mic = useMicMeeting(ctx, autoAssist, session, windowActions, piCoach);
   const assistant = useAssistantAsk(ctx, session, windowActions, mic.flushCurrentMicSegment);
 
   useTauriEvents(ctx, autoAssist, piCoach, session);
