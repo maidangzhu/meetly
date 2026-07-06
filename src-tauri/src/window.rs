@@ -5,7 +5,6 @@ const COLLAPSED_WIDTH: f64 = 600.0;
 const EXPANDED_WIDTH: f64 = 920.0;
 const COLLAPSED_HEIGHT: f64 = 54.0;
 const OUTER_GUTTER: f64 = 10.0;
-const CLICK_THROUGH_INTERACTIVE_HEIGHT: f64 = 122.0;
 const TOP_OFFSET: i32 = 54;
 
 #[tauri::command]
@@ -165,8 +164,7 @@ fn should_ignore_cursor_events(window: &WebviewWindow) -> Result<bool, String> {
         return Ok(true);
     }
 
-    let is_expanded = logical_height > COLLAPSED_HEIGHT + OUTER_GUTTER * 2.0 + 20.0;
-    Ok(is_expanded && local_y > OUTER_GUTTER + CLICK_THROUGH_INTERACTIVE_HEIGHT)
+    Ok(false)
 }
 
 #[cfg(target_os = "macos")]

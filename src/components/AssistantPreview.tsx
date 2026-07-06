@@ -39,7 +39,7 @@ export function AssistantPreview({
   prefetchStatus,
 }: AssistantPreviewProps) {
   return (
-    <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_320px] gap-3">
+    <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_320px] gap-3 overflow-hidden">
       <div className="flex min-h-0 flex-col">
         {autoAssistHint && (
           <div className="mb-3 shrink-0 rounded-xl border border-[#38d879]/20 bg-[#38d879]/10 p-3.5">
@@ -84,39 +84,41 @@ function SuggestionCard({
   isAsking,
 }: Pick<AssistantPreviewProps, "assistantDraft" | "assistantError" | "assistantSuggestion" | "isAsking">) {
   return (
-    <div className="mb-3 max-h-[230px] overflow-auto rounded-xl border border-white/[0.08] bg-white/[0.05] p-3.5">
-      <p className="m-0 text-[11px] text-white/60">建议</p>
-      {isAsking ? (
-        assistantDraft ? (
-          <p className="mt-2 whitespace-pre-wrap text-[13px] leading-normal text-white/90">{assistantDraft}</p>
-        ) : (
-          <p className="mt-2 flex items-center gap-2 text-[13px] leading-normal text-white/60">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" /> 正在生成建议...
-          </p>
-        )
-      ) : assistantError ? (
-        <p className="mt-2 text-[13px] leading-normal text-[#ff5c70]">{assistantError}</p>
-      ) : assistantSuggestion ? (
-        <>
-          <p className="mt-2 text-[13px] leading-normal text-white/90">{assistantSuggestion.answer}</p>
-          {assistantSuggestion.bullets.length > 0 && (
-            <ul className="mt-2 list-disc pl-[18px]">
-              {assistantSuggestion.bullets.map((bullet, index) => (
-                <li key={index} className="text-[13px] leading-normal text-white/70">{bullet}</li>
-              ))}
-            </ul>
-          )}
-          {assistantSuggestion.clarifyingQuestion && (
-            <p className="mt-2 text-[13px] italic leading-normal text-white/50">
-              {assistantSuggestion.clarifyingQuestion}
+    <div className="mb-3 flex max-h-[230px] min-h-[132px] flex-col overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.05] p-3.5">
+      <p className="m-0 shrink-0 text-[11px] text-white/60">建议</p>
+      <div className="mt-2 min-h-0 flex-1 overflow-auto overscroll-contain pr-1">
+        {isAsking ? (
+          assistantDraft ? (
+            <p className="m-0 whitespace-pre-wrap text-[13px] leading-normal text-white/90">{assistantDraft}</p>
+          ) : (
+            <p className="m-0 flex items-center gap-2 text-[13px] leading-normal text-white/60">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> 正在生成建议...
             </p>
-          )}
-        </>
-      ) : (
-        <p className="mt-2 text-[13px] leading-normal text-white/50">
-          按 Enter 根据从开始到现在的面试/对话转写生成建议。录音和转写会继续运行。
-        </p>
-      )}
+          )
+        ) : assistantError ? (
+          <p className="m-0 text-[13px] leading-normal text-[#ff5c70]">{assistantError}</p>
+        ) : assistantSuggestion ? (
+          <>
+            <p className="m-0 text-[13px] leading-normal text-white/90">{assistantSuggestion.answer}</p>
+            {assistantSuggestion.bullets.length > 0 && (
+              <ul className="mt-2 list-disc pl-[18px]">
+                {assistantSuggestion.bullets.map((bullet, index) => (
+                  <li key={index} className="text-[13px] leading-normal text-white/70">{bullet}</li>
+                ))}
+              </ul>
+            )}
+            {assistantSuggestion.clarifyingQuestion && (
+              <p className="mt-2 text-[13px] italic leading-normal text-white/50">
+                {assistantSuggestion.clarifyingQuestion}
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="m-0 text-[13px] leading-normal text-white/50">
+            按 Enter 根据从开始到现在的面试/对话转写生成建议。录音和转写会继续运行。
+          </p>
+        )}
+      </div>
     </div>
   );
 }
@@ -132,7 +134,7 @@ function CoachCard({
         <p className="m-0 text-[11px] text-white/60">PI 旁观者</p>
         {isCoachThinking && !coachDraft && <Loader2 className="h-3 w-3 animate-spin text-white/40" />}
       </div>
-      <ul className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-auto pr-1">
+      <ul className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-auto overscroll-contain pr-1">
         {coachMessages.length === 0 && !coachDraft && (
           <li className="text-[13px] leading-normal text-white/45">
             开始面试后，我会在检测到关键问题或回答完成时给短提示。
@@ -168,7 +170,7 @@ function TranscriptCard({ transcriptHistory }: Pick<AssistantPreviewProps, "tran
           还没有识别到语音。开始监听后，完整说完一句话会在这里出字。
         </p>
       ) : (
-        <ul className="mt-2 flex min-h-0 flex-1 flex-col gap-1.5 overflow-auto pr-1">
+        <ul className="mt-2 flex min-h-0 flex-1 flex-col gap-1.5 overflow-auto overscroll-contain pr-1">
           {transcriptHistory.map((segment) => (
             <li key={segment.id} className="text-[13px] leading-normal text-white/80">{segment.text}</li>
           ))}

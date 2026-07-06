@@ -262,7 +262,7 @@ function AssistantPanel({
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto p-3.5">
+      <div className="min-h-0 flex-1 overflow-hidden p-3.5">
         <AssistantPreview
           state={ctx.state}
           transcriptHistory={ctx.transcriptHistory}
