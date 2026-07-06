@@ -83,6 +83,14 @@ cargo check
 
 本机没有 Apple Developer ID 证书时，`pnpm tauri build` 只能产出 ad-hoc 签名包。这个包适合自己调试，或者给少量测试用户通过右键打开 / 移除 quarantine 的方式试用，但不能避免 Gatekeeper 的“取消 / 移到废纸篓”提示。
 
+未 notarize 测试包安装后，如果 macOS 只显示“取消 / 移到废纸篓”，可以先确认自己信任这个本地测试包，然后执行：
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Meetly.app
+```
+
+这条命令只是移除下载隔离标记，不等于正式签名或 notarize。只给内部测试用户使用；对外发布仍然要走 Apple Developer ID 签名和 notarization。
+
 要产出别人双击即可正常打开的测试版或正式版，需要走 `.github/workflows/release-macos.yml`：
 
 1. 在 GitHub Secrets 配置 Apple 和 Tauri updater 凭据。
