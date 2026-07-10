@@ -11,13 +11,11 @@ import type {
 } from "./types";
 import type { MeetlyState } from "./useMeetlyState";
 import type { AutoAssistActions } from "./useAutoAssist";
-import type { PiCoachActions } from "./usePiCoach";
 import type { SessionActions } from "./useSessionActions";
 
 export function useTauriEvents(
   ctx: MeetlyState,
   autoAssist: AutoAssistActions,
-  piCoach: PiCoachActions,
   session: SessionActions
 ) {
   useEffect(() => {
@@ -99,10 +97,6 @@ export function useTauriEvents(
         }));
         ctx.pendingAskIdRef.current = null;
       }
-      void piCoach.runPiCoach({
-        trigger: "manual_ask_done",
-        latestAnswer: event.payload.answer,
-      });
     }).then((nextUnlisten) => {
       if (disposed) nextUnlisten();
       else unlistenDone = nextUnlisten;
@@ -133,5 +127,5 @@ export function useTauriEvents(
       unlistenDone?.();
       unlistenError?.();
     };
-  }, [ctx, piCoach, session]);
+  }, [ctx, session]);
 }

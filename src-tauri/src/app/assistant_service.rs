@@ -132,11 +132,9 @@ async fn run_completion_streaming(
     system_prompt: String,
     user_message: String,
 ) -> Result<AssistantSuggestion, String> {
-    let credentials = crate::providers::credentials::resolve(
-        &app,
-        crate::providers::config::ProviderKind::Llm,
-    )
-    .map_err(|error| error.to_string())?;
+    let credentials =
+        crate::providers::credentials::resolve(&app, crate::providers::config::ProviderKind::Llm)
+            .map_err(|error| error.to_string())?;
 
     let body = json!({
         "model": credentials.model,

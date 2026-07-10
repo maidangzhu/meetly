@@ -21,6 +21,12 @@ export type TranscriptError = {
   message: string;
 };
 
+export type PartialTranscript = {
+  text: string;
+  startMs: number;
+  endMs: number;
+};
+
 export type AssistantMode = "interview" | "meeting" | "sales";
 
 export type AssistantSuggestion = {
@@ -107,7 +113,13 @@ export type PrefetchInFlight = {
 
 export type PrefetchStatus = "idle" | "prefetching" | "ready" | "error";
 
-export type CoachTrigger = "session_started" | "question_detected" | "manual_ask_done" | "heartbeat";
+export type CoachTrigger =
+  | "agent_enter"
+  | "agent_stt_question"
+  | "session_started"
+  | "question_detected"
+  | "manual_ask_done"
+  | "heartbeat";
 
 export type CoachMessage = {
   id: string;
@@ -115,6 +127,14 @@ export type CoachMessage = {
   trigger: CoachTrigger;
   text: string;
   contextPreview: string;
+};
+
+export type CoachActivityPhase = "thinking" | "tool" | "speaking";
+
+export type CoachActivity = {
+  phase: CoachActivityPhase;
+  label: string;
+  detail?: string;
 };
 
 export type InterviewReportRequest = {

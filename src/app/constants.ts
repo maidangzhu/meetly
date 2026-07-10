@@ -10,10 +10,10 @@ export const GHOST_ICON_BUTTON =
   "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border-0 bg-transparent text-white/60 transition-[background,color,transform] duration-150 hover:bg-white/[0.14] active:scale-[0.98] [&_svg]:h-4 [&_svg]:w-4";
 export const DRAG_CURSOR = "cursor-grab active:cursor-grabbing";
 
-export const MIC_SEGMENT_MS = 2_000;
-export const MIC_MIN_SEGMENT_MS = 900;
+export const MIC_SEGMENT_MS = 4_000;
+export const MIC_MIN_SEGMENT_MS = 1_200;
 export const MIC_VAD_INTERVAL_MS = 100;
-export const MIC_VAD_SILENCE_MS = 650;
+export const MIC_VAD_SILENCE_MS = 1_100;
 export const MIC_VAD_RMS_THRESHOLD = 0.018;
 export const FULL_SESSION_SEGMENT_LIMIT = 500;
 export const AUTO_ASSIST_MIN_CONFIDENCE = 0.68;

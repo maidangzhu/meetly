@@ -3,6 +3,7 @@ import type {
   AssistantMode,
   AssistantSuggestion,
   AutoAssistHint,
+  CoachActivity,
   CoachMessage,
   InterviewSession,
   IslandState,
@@ -11,8 +12,10 @@ import type {
   PrefetchInFlight,
   PrefetchStatus,
   QuestionCandidate,
+  PartialTranscript,
   TranscriptSegment,
 } from "./types";
+import { createInitialCoachWakeState } from "./coachWakePolicy";
 
 export function useMeetlyState() {
   const [state, setState] = useState<IslandState>("idle");
@@ -21,6 +24,7 @@ export function useMeetlyState() {
   const [isStealthOn, setIsStealthOn] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [latestTranscript, setLatestTranscript] = useState<TranscriptSegment | null>(null);
+  const [partialTranscript, setPartialTranscript] = useState<PartialTranscript | null>(null);
   const [transcriptHistory, setTranscriptHistory] = useState<TranscriptSegment[]>([]);
   const [transcriptError, setTranscriptError] = useState<string | null>(null);
   const [assistantMode, setAssistantMode] = useState<AssistantMode>("interview");
@@ -33,6 +37,7 @@ export function useMeetlyState() {
   const [prefetchStatus, setPrefetchStatus] = useState<PrefetchStatus>("idle");
   const [coachMessages, setCoachMessages] = useState<CoachMessage[]>([]);
   const [coachDraft, setCoachDraft] = useState<CoachMessage | null>(null);
+  const [coachActivity, setCoachActivity] = useState<CoachActivity | null>(null);
   const [isCoachThinking, setIsCoachThinking] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -59,6 +64,8 @@ export function useMeetlyState() {
   const hintExpiryTimerRef = useRef<number | null>(null);
   const coachMessagesRef = useRef<CoachMessage[]>([]);
   const coachInFlightRef = useRef(false);
+  const coachWakeStateRef = useRef(createInitialCoachWakeState());
+  const coachActivityClearTimerRef = useRef<number | null>(null);
   const lastCoachAtRef = useRef(0);
   const pendingAskIdRef = useRef<string | null>(null);
   const currentRecorderStoppedRef = useRef<Promise<void> | null>(null);
@@ -77,6 +84,8 @@ export function useMeetlyState() {
     setAudioLevel,
     latestTranscript,
     setLatestTranscript,
+    partialTranscript,
+    setPartialTranscript,
     transcriptHistory,
     setTranscriptHistory,
     transcriptError,
@@ -101,6 +110,8 @@ export function useMeetlyState() {
     setCoachMessages,
     coachDraft,
     setCoachDraft,
+    coachActivity,
+    setCoachActivity,
     isCoachThinking,
     setIsCoachThinking,
     mediaRecorderRef,
@@ -127,6 +138,8 @@ export function useMeetlyState() {
     hintExpiryTimerRef,
     coachMessagesRef,
     coachInFlightRef,
+    coachWakeStateRef,
+    coachActivityClearTimerRef,
     lastCoachAtRef,
     pendingAskIdRef,
     currentRecorderStoppedRef,

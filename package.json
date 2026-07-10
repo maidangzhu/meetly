@@ -7,6 +7,9 @@
     "dev": "vite --host 127.0.0.1 --port 1420",
     "build": "tsc && vite build",
     "preview": "vite preview --host 127.0.0.1",
+    "test:flow": "node scripts/simulate-interview-flow.mjs",
+    "test:wake": "tsx scripts/replay-coach-wake-policy.ts",
+    "test:coach-log": "tsx scripts/replay-latest-coach-log.ts",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -26,6 +29,7 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
     "tailwindcss": "^4.3.1",
+    "tsx": "^4.23.0",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"
   }

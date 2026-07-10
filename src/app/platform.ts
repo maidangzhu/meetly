@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export const isTauriRuntime = () => "__TAURI_INTERNALS__" in window;
+export const isTauriRuntime = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 export async function safeInvoke<T>(command: string, args?: Record<string, unknown>) {
   if (!isTauriRuntime()) {

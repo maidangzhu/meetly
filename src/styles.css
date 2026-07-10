@@ -46,3 +46,26 @@ button {
     box-shadow: 0 0 0 0 rgb(56 216 121 / 0);
   }
 }
+
+@keyframes transcript-caret-blink {
+  0%,
+  45% {
+    opacity: 1;
+  }
+
+  46%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes live-transcript-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 14px rgb(56 216 121 / 0.06);
+  }
+
+  50% {
+    box-shadow: 0 0 22px rgb(56 216 121 / 0.12);
+  }
+}

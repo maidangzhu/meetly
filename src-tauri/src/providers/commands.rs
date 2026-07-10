@@ -65,8 +65,8 @@ pub async fn test_llm_config(app: AppHandle) -> Result<DiagnosticResult, String>
 /// behavior; it only bridges saved local dev config into the WebView runtime.
 #[tauri::command]
 pub async fn get_llm_runtime_config_for_pi(app: AppHandle) -> Result<LlmRuntimeConfig, String> {
-    let credentials = credentials::resolve(&app, ProviderKind::Llm)
-        .map_err(|error| error.to_string())?;
+    let credentials =
+        credentials::resolve(&app, ProviderKind::Llm).map_err(|error| error.to_string())?;
 
     Ok(LlmRuntimeConfig {
         base_url: credentials.base_url,
@@ -114,7 +114,9 @@ pub async fn transcribe_audio(
         message
     })?;
 
-    let extension = if mime_type.contains("ogg") {
+    let extension = if mime_type.contains("wav") || mime_type.contains("wave") {
+        "wav"
+    } else if mime_type.contains("ogg") {
         "ogg"
     } else {
         "webm"

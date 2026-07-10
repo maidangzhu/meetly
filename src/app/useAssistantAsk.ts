@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from "react";
-import { buildInterviewAskContext, transcriptSimilarity } from "./interviewLogic";
+import { buildInterviewAskContext } from "./interviewLogic";
 import { createId, debugLog, safeInvoke } from "./platform";
 import type { MeetlyState } from "./useMeetlyState";
 import type { SessionActions } from "./useSessionActions";
@@ -33,46 +33,10 @@ export function useAssistantAsk(
 
       const askId = createId("ask");
       ctx.pendingAskIdRef.current = askId;
-      const activeHint = ctx.autoAssistHintRef.current;
-      const cache = ctx.prefetchCacheRef.current;
-      const now = Date.now();
-      const hasFreshCache =
-        cache &&
-        cache.expiresAt > now &&
-        activeHint?.candidate.id === cache.candidateId &&
-        transcriptSimilarity(cache.questionText, askContext.latest.text) >= 0.82;
-
-      if (hasFreshCache) {
-        debugLog(`[auto] cache hit candidate=${cache.candidateId} ask=${askId} context=${cache.contextPreview.replace(/\n/g, " ")}`);
-        ctx.setAssistantSuggestion(cache.suggestion);
-        ctx.setAssistantDraft("");
-        ctx.setAssistantError(null);
-        ctx.setIsAsking(false);
-        session.setCurrentAutoAssistHint(null);
-        ctx.setPrefetchStatus("idle");
-        ctx.prefetchCacheRef.current = null;
-        session.updateInterviewSession((current) => ({
-          ...current,
-          status: current.endedAt ? "idle" : "listening",
-          asks: [
-            ...current.asks,
-            {
-              id: askId,
-              createdAt: Date.now(),
-              latestQuestion: askContext.latest.text,
-              contextPreview: askContext.preview,
-              answer: cache.suggestion.answer,
-              error: null,
-            },
-          ],
-        }));
-        ctx.pendingAskIdRef.current = null;
-        return;
-      }
-
-      debugLog(`[auto] cache miss ask=${askId} reason=${cache ? cache.expiresAt <= now ? "expired" : activeHint?.candidate.id !== cache.candidateId ? "candidate_mismatch" : "context_mismatch" : "empty"}`);
       ctx.prefetchInFlightRef.current = null;
+      ctx.prefetchCacheRef.current = null;
       session.setCurrentAutoAssistHint(null);
+      ctx.setPrefetchStatus("idle");
       session.updateInterviewSession((current) => ({
         ...current,
         status: "asking",
@@ -89,7 +53,9 @@ export function useAssistantAsk(
         ],
       }));
 
-      debugLog(`[ask] submit mode=${ctx.assistantMode} latest_confidence=${askContext.latest.confidence.toFixed(2)} latest_reason=${askContext.latest.reason} recent_segments=${askContext.recentSegments.length} full_segments=${askContext.fullSegments.length} chars=${askContext.userMessage.length} preview=${askContext.preview.replace(/\n/g, " ")}`);
+      debugLog(
+        `[ask] submit mode=${ctx.assistantMode} recent_segments=${askContext.recentSegments.length} full_segments=${askContext.fullSegments.length} chars=${askContext.userMessage.length} preview=${askContext.preview.replace(/\n/g, " ")}`
+      );
       await safeInvoke("ask_assistant_with_question", {
         mode: ctx.assistantMode,
         question: askContext.userMessage,

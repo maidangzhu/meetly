@@ -75,7 +75,8 @@ impl LlmProvider for OpenAiCompatibleLlm {
 /// rather than surfacing a parse error, at the cost of losing the
 /// bullets/clarifying_question structure for that one response.
 pub(crate) fn parse_suggestion(content: &str) -> AssistantSuggestion {
-    match serde_json::from_str::<AssistantSuggestion>(content) {
+    let normalized = strip_json_code_fence(content);
+    match serde_json::from_str::<AssistantSuggestion>(normalized) {
         Ok(mut suggestion) => {
             suggestion.bullets.truncate(3);
             suggestion
@@ -85,5 +86,38 @@ pub(crate) fn parse_suggestion(content: &str) -> AssistantSuggestion {
             bullets: Vec::new(),
             clarifying_question: None,
         },
+    }
+}
+
+fn strip_json_code_fence(content: &str) -> &str {
+    let trimmed = content.trim();
+    let Some(rest) = trimmed.strip_prefix("```") else {
+        return trimmed;
+    };
+
+    let rest = rest
+        .strip_prefix("json")
+        .or_else(|| rest.strip_prefix("JSON"))
+        .unwrap_or(rest)
+        .trim_start();
+
+    rest.strip_suffix("```").unwrap_or(rest).trim()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_suggestion_accepts_json_code_fence() {
+        let suggestion = parse_suggestion(
+            r#"```json
+{"answer":"可以这样说","bullets":["一","二","三","四"],"clarifyingQuestion":null}
+```"#,
+        );
+
+        assert_eq!(suggestion.answer, "可以这样说");
+        assert_eq!(suggestion.bullets.len(), 3);
+        assert_eq!(suggestion.clarifying_question, None);
     }
 }

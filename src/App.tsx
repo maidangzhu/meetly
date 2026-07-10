@@ -19,11 +19,11 @@ import {
   STEALTH_STATUS_BUTTON,
 } from "./app/constants";
 import { questionKindLabel } from "./app/interviewLogic";
+import { useAgentRuntime } from "./app/useAgentRuntime";
 import { useAssistantAsk } from "./app/useAssistantAsk";
 import { useAutoAssist } from "./app/useAutoAssist";
 import { useMeetlyState } from "./app/useMeetlyState";
 import { useMicMeeting } from "./app/useMicMeeting";
-import { usePiCoach } from "./app/usePiCoach";
 import { useSessionActions } from "./app/useSessionActions";
 import { useTauriEvents } from "./app/useTauriEvents";
 import { useWindowActions } from "./app/useWindowActions";
@@ -34,12 +34,12 @@ export function App() {
   const ctx = useMeetlyState();
   const session = useSessionActions(ctx);
   const windowActions = useWindowActions(ctx);
-  const piCoach = usePiCoach(ctx);
-  const autoAssist = useAutoAssist(ctx, session, piCoach);
-  const mic = useMicMeeting(ctx, autoAssist, session, windowActions, piCoach);
+  const agent = useAgentRuntime(ctx);
+  const autoAssist = useAutoAssist(ctx, session, agent);
+  const mic = useMicMeeting(ctx, autoAssist, session, windowActions);
   const assistant = useAssistantAsk(ctx, session, windowActions, mic.flushCurrentMicSegment);
 
-  useTauriEvents(ctx, autoAssist, piCoach, session);
+  useTauriEvents(ctx, autoAssist, session);
 
   if (ctx.isHidden) {
     return (
@@ -101,9 +101,13 @@ export function App() {
                   ) : (
                     <ListeningStatusButton
                       audioLevel={ctx.audioLevel}
-                      latestText={ctx.latestTranscript?.text ?? null}
+                      latestText={ctx.partialTranscript?.text ?? ctx.latestTranscript?.text ?? null}
                       setPanel={windowActions.setPanel}
-                      statusLabel={windowActions.status.label}
+                      statusLabel={getListeningStatusLabel({
+                        audioLevel: ctx.audioLevel,
+                        hasPartialTranscript: Boolean(ctx.partialTranscript),
+                        transcriptError: ctx.transcriptError,
+                      })}
                       transcriptError={ctx.transcriptError}
                     />
                   )}
@@ -140,7 +144,6 @@ export function App() {
           {ctx.openPanel && (
             <AssistantPanel
               ctx={ctx}
-              activeSessionTranscriptCount={session.activeSessionTranscriptCount}
               closePanel={() => windowActions.setPanel(null)}
               startIslandDrag={windowActions.startIslandDrag}
             />
@@ -240,12 +243,10 @@ function IdleStatusButton({
 }
 
 function AssistantPanel({
-  activeSessionTranscriptCount,
   closePanel,
   ctx,
   startIslandDrag,
 }: {
-  activeSessionTranscriptCount: number;
   closePanel: () => void;
   ctx: ReturnType<typeof useMeetlyState>;
   startIslandDrag: ReturnType<typeof useWindowActions>["startIslandDrag"];
@@ -254,8 +255,8 @@ function AssistantPanel({
     <section className="absolute bottom-2 top-[62px] flex w-full flex-col overflow-hidden rounded-xl border border-white/10 bg-[rgb(27_27_28_/_0.82)] shadow-[0_10px_18px_rgb(0_0_0_/_0.22)] backdrop-blur-3xl">
       <div className="flex h-14 items-center justify-between border-b border-white/[0.08] bg-white/[0.04] px-3 py-2.5">
         <div className={`min-w-0 flex-1 ${DRAG_CURSOR}`} onMouseDown={startIslandDrag}>
-          <p className="m-0 text-[11px] text-white/60">MVP 0.1</p>
-          <h1 className="m-0 text-sm leading-tight">Assistant</h1>
+          <p className="m-0 text-[11px] text-white/60">{ctx.state === "listening" ? "录音中" : "待机"}</p>
+          <h1 className="m-0 text-sm leading-tight">面试会话</h1>
         </div>
         <button className={GHOST_ICON_BUTTON} onClick={closePanel}>
           <ChevronDown className="rotate-180" />
@@ -264,20 +265,38 @@ function AssistantPanel({
 
       <div className="min-h-0 flex-1 overflow-hidden p-3.5">
         <AssistantPreview
-          state={ctx.state}
           transcriptHistory={ctx.transcriptHistory}
+          partialTranscript={ctx.partialTranscript}
+          audioLevel={ctx.audioLevel}
+          isListening={ctx.state === "listening"}
+          transcriptError={ctx.transcriptError}
           assistantSuggestion={ctx.assistantSuggestion}
           assistantDraft={ctx.assistantDraft}
           assistantError={ctx.assistantError}
           isAsking={ctx.isAsking}
           coachMessages={ctx.coachMessages}
           coachDraft={ctx.coachDraft}
+          coachActivity={ctx.coachActivity}
           isCoachThinking={ctx.isCoachThinking}
-          activeSessionTranscriptCount={activeSessionTranscriptCount}
           autoAssistHint={ctx.autoAssistHint}
           prefetchStatus={ctx.prefetchStatus}
         />
       </div>
     </section>
   );
+}
+
+function getListeningStatusLabel({
+  audioLevel,
+  hasPartialTranscript,
+  transcriptError,
+}: {
+  audioLevel: number;
+  hasPartialTranscript: boolean;
+  transcriptError: string | null;
+}) {
+  if (transcriptError) return "转写异常";
+  if (hasPartialTranscript) return "转写中";
+  if (audioLevel > 0.015) return "正在听";
+  return "等待语音";
 }

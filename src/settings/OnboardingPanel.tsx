@@ -49,7 +49,7 @@ export function OnboardingPanel({
           </p>
           <h2 className="m-0 mt-2 text-2xl font-semibold leading-tight">面试时放在屏幕顶部的实时辅助。</h2>
           <p className="mt-3 mb-0 text-sm leading-relaxed text-white/55">
-            Meetly 会在本机持续听取你的对话，把小段音频转成文字，并在你按 Enter 或旁观者 agent 发现关键问题时给出短建议。
+            Meetly 会在本机持续听取你的对话，把小段音频转成文字，并在你按 Enter 或场边教练发现关键问题时给出短建议。
           </p>
         </div>
 

@@ -1,40 +1,47 @@
-import { Loader2 } from "lucide-react";
+import { Brain, Loader2, MessageCircle, Wrench } from "lucide-react";
 import { coachTriggerLabel, questionKindLabel } from "../app/interviewLogic";
 import type {
   AssistantSuggestion,
   AutoAssistHint,
+  CoachActivity,
   CoachMessage,
-  IslandState,
+  PartialTranscript,
   PrefetchStatus,
   TranscriptSegment,
 } from "../app/types";
 
 type AssistantPreviewProps = {
-  state: IslandState;
   transcriptHistory: TranscriptSegment[];
+  partialTranscript: PartialTranscript | null;
+  audioLevel: number;
+  isListening: boolean;
+  transcriptError: string | null;
   assistantSuggestion: AssistantSuggestion | null;
   assistantDraft: string;
   assistantError: string | null;
   isAsking: boolean;
   coachMessages: CoachMessage[];
   coachDraft: CoachMessage | null;
+  coachActivity: CoachActivity | null;
   isCoachThinking: boolean;
-  activeSessionTranscriptCount: number;
   autoAssistHint: AutoAssistHint | null;
   prefetchStatus: PrefetchStatus;
 };
 
 export function AssistantPreview({
-  state,
   transcriptHistory,
+  partialTranscript,
+  audioLevel,
+  isListening,
+  transcriptError,
   assistantSuggestion,
   assistantDraft,
   assistantError,
   isAsking,
   coachMessages,
   coachDraft,
+  coachActivity,
   isCoachThinking,
-  activeSessionTranscriptCount,
   autoAssistHint,
   prefetchStatus,
 }: AssistantPreviewProps) {
@@ -44,8 +51,7 @@ export function AssistantPreview({
         {autoAssistHint && (
           <div className="mb-3 shrink-0 rounded-xl border border-[#38d879]/20 bg-[#38d879]/10 p-3.5">
             <p className="m-0 text-[11px] text-[#baf8cf]">
-              {questionKindLabel(autoAssistHint.candidate.kind)} · confidence{" "}
-              {autoAssistHint.candidate.confidence.toFixed(2)} · {prefetchStatus}
+              {questionKindLabel(autoAssistHint.candidate.kind)} · {prefetchStatusLabel(prefetchStatus)}
             </p>
             <p className="mt-2 text-[13px] leading-normal text-white/80">
               {autoAssistHint.candidate.text}
@@ -62,19 +68,30 @@ export function AssistantPreview({
           />
         </div>
 
-        <TranscriptCard transcriptHistory={transcriptHistory} />
-        <p className="m-0 shrink-0 pt-2 text-[11px] text-white/60">
-          Current state: {state} · Session segments: {activeSessionTranscriptCount}
-        </p>
+        <TranscriptCard
+          audioLevel={audioLevel}
+          isListening={isListening}
+          partialTranscript={partialTranscript}
+          transcriptError={transcriptError}
+          transcriptHistory={transcriptHistory}
+        />
       </div>
 
       <CoachCard
         coachMessages={coachMessages}
         coachDraft={coachDraft}
+        coachActivity={coachActivity}
         isCoachThinking={isCoachThinking}
       />
     </div>
   );
+}
+
+function prefetchStatusLabel(status: PrefetchStatus) {
+  if (status === "prefetching") return "正在准备";
+  if (status === "ready") return "已准备";
+  if (status === "error") return "准备失败";
+  return "待处理";
 }
 
 function SuggestionCard({
@@ -115,7 +132,7 @@ function SuggestionCard({
           </>
         ) : (
           <p className="m-0 text-[13px] leading-normal text-white/50">
-            按 Enter 根据从开始到现在的面试/对话转写生成建议。录音和转写会继续运行。
+            按 Enter 根据从开始到现在的面试/对话转写生成建议。右侧场边教练会在识别到问题时给短提示。
           </p>
         )}
       </div>
@@ -124,20 +141,25 @@ function SuggestionCard({
 }
 
 function CoachCard({
+  coachActivity,
   coachMessages,
   coachDraft,
   isCoachThinking,
-}: Pick<AssistantPreviewProps, "coachMessages" | "coachDraft" | "isCoachThinking">) {
+}: Pick<AssistantPreviewProps, "coachActivity" | "coachMessages" | "coachDraft" | "isCoachThinking">) {
   return (
     <aside className="flex min-h-0 flex-col rounded-xl border border-white/[0.08] bg-white/[0.05] p-3.5">
       <div className="flex shrink-0 items-center justify-between">
-        <p className="m-0 text-[11px] text-white/60">PI 旁观者</p>
-        {isCoachThinking && !coachDraft && <Loader2 className="h-3 w-3 animate-spin text-white/40" />}
+        <p className="m-0 text-[11px] text-white/60">场边教练</p>
+        {coachActivity ? (
+          <CoachActivityPill activity={coachActivity} />
+        ) : isCoachThinking && !coachDraft ? (
+          <Loader2 className="h-3 w-3 animate-spin text-white/40" />
+        ) : null}
       </div>
       <ul className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-auto overscroll-contain pr-1">
         {coachMessages.length === 0 && !coachDraft && (
           <li className="text-[13px] leading-normal text-white/45">
-            开始面试后，我会在检测到关键问题或回答完成时给短提示。
+            开始会话后，关键时刻会给你一句能直接接上的提醒。
           </li>
         )}
         {coachMessages.map((message) => (
@@ -149,8 +171,12 @@ function CoachCard({
         {coachDraft && (
           <li className="rounded-lg bg-[#38d879]/10 px-2.5 py-2">
             <p className="m-0 flex items-center gap-1.5 text-[11px] text-[#baf8cf]">
-              <Loader2 className="h-3 w-3 animate-spin" /> {coachTriggerLabel(coachDraft.trigger)}
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {coachActivity?.label ?? coachTriggerLabel(coachDraft.trigger)}
             </p>
+            {coachActivity?.detail && (
+              <p className="mt-1 text-[12px] leading-normal text-white/45">{coachActivity.detail}</p>
+            )}
             {coachDraft.text && (
               <p className="mt-1 whitespace-pre-wrap text-[13px] leading-normal text-white/82">{coachDraft.text}</p>
             )}
@@ -161,21 +187,108 @@ function CoachCard({
   );
 }
 
-function TranscriptCard({ transcriptHistory }: Pick<AssistantPreviewProps, "transcriptHistory">) {
+function CoachActivityPill({ activity }: { activity: CoachActivity }) {
+  const Icon =
+    activity.phase === "tool"
+      ? Wrench
+      : activity.phase === "speaking"
+        ? MessageCircle
+        : Brain;
+  const isSpinning = activity.phase === "thinking" || activity.phase === "tool";
+
+  return (
+    <span className="inline-flex h-6 max-w-[180px] items-center gap-1.5 rounded-md border border-[#38d879]/20 bg-[#38d879]/10 px-2 text-[11px] text-[#baf8cf]">
+      <Icon className={`h-3 w-3 shrink-0 ${isSpinning ? "animate-pulse" : ""}`} />
+      <span className="min-w-0 truncate">{activity.label}</span>
+    </span>
+  );
+}
+
+function TranscriptCard({
+  audioLevel,
+  isListening,
+  partialTranscript,
+  transcriptError,
+  transcriptHistory,
+}: Pick<
+  AssistantPreviewProps,
+  "audioLevel" | "isListening" | "partialTranscript" | "transcriptError" | "transcriptHistory"
+>) {
+  const status = getTranscriptStatus({ audioLevel, isListening, partialTranscript, transcriptError });
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.05] p-3.5">
-      <p className="m-0 shrink-0 text-[11px] text-white/60">最近转写</p>
-      {transcriptHistory.length === 0 ? (
+      <div className="flex shrink-0 items-center justify-between gap-2">
+        <p className="m-0 text-[11px] text-white/60">最近转写</p>
+        <span className={`inline-flex h-6 max-w-[140px] items-center gap-1.5 rounded-md px-2 text-[11px] ${status.className}`}>
+          {status.live && (
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current shadow-[0_0_0_0_rgb(56_216_121_/_0.30)] [animation:listening-dot-pulse_1.4s_infinite]" />
+          )}
+          <span className="min-w-0 truncate">{status.label}</span>
+        </span>
+      </div>
+      {transcriptHistory.length === 0 && !partialTranscript ? (
         <p className="mt-2 text-[13px] leading-normal text-white/50">
-          还没有识别到语音。开始监听后，完整说完一句话会在这里出字。
+          {isListening ? "正在监听，开口后会先显示实时字幕。" : "开始监听后，完整说完一句话会在这里出字。"}
         </p>
       ) : (
-        <ul className="mt-2 flex min-h-0 flex-1 flex-col gap-1.5 overflow-auto overscroll-contain pr-1">
+        <ul className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-auto overscroll-contain pr-1">
           {transcriptHistory.map((segment) => (
-            <li key={segment.id} className="text-[13px] leading-normal text-white/80">{segment.text}</li>
+            <li key={segment.id} className="rounded-lg bg-black/[0.12] px-2.5 py-2 text-[13px] leading-normal text-white/78">
+              {segment.text}
+            </li>
           ))}
+          {partialTranscript && (
+            <li className="rounded-lg border border-[#38d879]/25 bg-[#38d879]/10 px-3 py-2 shadow-[0_0_18px_rgb(56_216_121_/_0.08)] [animation:live-transcript-glow_1.6s_ease-in-out_infinite]">
+              <p className="m-0 flex items-center gap-1.5 text-[11px] text-[#baf8cf]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#38d879] shadow-[0_0_0_0_rgb(56_216_121_/_0.42)] [animation:listening-dot-pulse_1.4s_infinite]" />
+                实时转写
+              </p>
+              <p className="mt-1 whitespace-pre-wrap text-[14px] leading-normal text-white/90">
+                {partialTranscript.text}
+                <span className="ml-0.5 inline-block h-4 w-[2px] translate-y-[2px] rounded-full bg-[#baf8cf] [animation:transcript-caret-blink_1s_steps(2,start)_infinite]" />
+              </p>
+            </li>
+          )}
         </ul>
       )}
     </div>
   );
+}
+
+function getTranscriptStatus({
+  audioLevel,
+  isListening,
+  partialTranscript,
+  transcriptError,
+}: Pick<AssistantPreviewProps, "audioLevel" | "isListening" | "partialTranscript" | "transcriptError">) {
+  if (transcriptError) {
+    return {
+      className: "border border-[#ff5c70]/20 bg-[#ff5c70]/10 text-[#ff9aaa]",
+      label: "转写异常",
+      live: false,
+    };
+  }
+
+  if (partialTranscript) {
+    return {
+      className: "border border-[#38d879]/20 bg-[#38d879]/10 text-[#baf8cf]",
+      label: "转写中",
+      live: true,
+    };
+  }
+
+  if (isListening && audioLevel > 0.015) {
+    return {
+      className: "border border-white/10 bg-white/[0.06] text-white/70",
+      label: "正在听",
+      live: true,
+    };
+  }
+
+  return {
+    className: "border border-white/10 bg-white/[0.04] text-white/45",
+    label: isListening ? "等待语音" : "待机",
+    live: false,
+  };
 }
