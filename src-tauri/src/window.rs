@@ -18,8 +18,7 @@ pub fn set_island_height(window: WebviewWindow, height: u32) -> Result<(), Strin
         width + OUTER_GUTTER * 2.0,
         height as f64 + OUTER_GUTTER * 2.0,
     );
-    window.set_size(size).map_err(|error| error.to_string())?;
-    position_top_center(&window).map_err(|error| error.to_string())?;
+    resize_preserving_position(&window, size).map_err(|error| error.to_string())?;
     Ok(())
 }
 
@@ -100,6 +99,39 @@ fn position_top_center(window: &WebviewWindow) -> tauri::Result<()> {
         let max_x = monitor_right - window_width;
         let max_y = monitor_bottom - window_height;
         let x = clamp_i32(centered_x, monitor_left, max_x.max(monitor_left));
+        let y = clamp_i32(desired_y, monitor_top, max_y.max(monitor_top));
+
+        window.set_position(Position::Physical(PhysicalPosition::new(x, y)))?;
+    }
+
+    Ok(())
+}
+
+fn resize_preserving_position(
+    window: &WebviewWindow,
+    size: tauri::LogicalSize<f64>,
+) -> tauri::Result<()> {
+    let scale = window.scale_factor()?;
+    let old_position = window.outer_position()?;
+    let old_size = window.outer_size()?;
+    let new_width = (size.width * scale).round() as i32;
+    let new_height = (size.height * scale).round() as i32;
+    let old_center_x = old_position.x + old_size.width as i32 / 2;
+    let desired_x = old_center_x - new_width / 2;
+    let desired_y = old_position.y;
+
+    window.set_size(size)?;
+
+    if let Some(monitor) = window.current_monitor()?.or(window.primary_monitor()?) {
+        let monitor_position = monitor.position();
+        let monitor_size = monitor.size();
+        let monitor_left = monitor_position.x;
+        let monitor_top = monitor_position.y;
+        let monitor_right = monitor_left + monitor_size.width as i32;
+        let monitor_bottom = monitor_top + monitor_size.height as i32;
+        let max_x = monitor_right - new_width;
+        let max_y = monitor_bottom - new_height;
+        let x = clamp_i32(desired_x, monitor_left, max_x.max(monitor_left));
         let y = clamp_i32(desired_y, monitor_top, max_y.max(monitor_top));
 
         window.set_position(Position::Physical(PhysicalPosition::new(x, y)))?;
