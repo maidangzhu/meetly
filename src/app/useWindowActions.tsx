@@ -45,12 +45,8 @@ export function useWindowActions(ctx: MeetlyState) {
   }, [ctx]);
 
   const openSettings = useCallback(async () => {
-    try {
-      await safeInvoke("open_settings_window");
-    } catch (error) {
-      console.error("Failed to open settings window:", error);
-    }
-  }, []);
+    await setPanel("settings");
+  }, [setPanel]);
 
   const status = useMemo(() => {
     if (ctx.state === "error") {

@@ -117,7 +117,7 @@ function useProviderSection(kind: ProviderKind) {
   };
 }
 
-function ProviderSection({
+export function ProviderSection({
   title,
   description,
   kind,
@@ -192,7 +192,7 @@ function ProviderSection({
   );
 }
 
-function DiagnosticsSection() {
+export function DiagnosticsSection() {
   const [audioStatus, setAudioStatus] = useState<AudioStatus | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -290,7 +290,15 @@ function DiagnosticItem({
   );
 }
 
-export function SettingsApp() {
+export function SettingsContent({
+  compact = false,
+  onOnboardingCompleted,
+  onQuit,
+}: {
+  compact?: boolean;
+  onOnboardingCompleted?: () => void;
+  onQuit?: () => void;
+}) {
   const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus | null>(null);
 
   const loadOnboardingStatus = useCallback(async () => {
@@ -307,7 +315,7 @@ export function SettingsApp() {
   }, [loadOnboardingStatus]);
 
   return (
-    <div className="h-screen w-screen overflow-y-auto bg-[#1b1b1c] p-5">
+    <div className={compact ? "" : "h-screen w-screen overflow-y-auto bg-[#1b1b1c] p-5"}>
       <h1 className="m-0 mb-1 text-base font-semibold">Meetly Settings</h1>
       <p className="mt-0 mb-5 text-xs text-white/50">
         Configure the STT and LLM providers used for transcription and
@@ -318,7 +326,10 @@ export function SettingsApp() {
       {!onboardingStatus?.completed && (
         <OnboardingPanel
           status={onboardingStatus}
-          onCompleted={() => void loadOnboardingStatus()}
+          onCompleted={() => {
+            void loadOnboardingStatus();
+            onOnboardingCompleted?.();
+          }}
         />
       )}
 
@@ -336,13 +347,21 @@ export function SettingsApp() {
       />
       <DiagnosticsSection />
       <UpdateSection />
-      <FooterActions />
+      <FooterActions onQuit={onQuit} />
     </div>
   );
 }
 
-function FooterActions() {
+export function SettingsApp() {
+  return <SettingsContent />;
+}
+
+function FooterActions({ onQuit }: { onQuit?: () => void }) {
   const quit = () => {
+    if (onQuit) {
+      onQuit();
+      return;
+    }
     void invoke("quit_app");
   };
 

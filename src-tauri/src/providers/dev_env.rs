@@ -44,6 +44,7 @@ pub fn seed_from_dotenv_if_missing(app: &AppHandle) {
 
     seed_stt(app);
     seed_llm(app);
+    seed_exa();
 }
 
 #[cfg(debug_assertions)]
@@ -100,6 +101,26 @@ fn seed_llm(app: &AppHandle) {
         std::env::var("LLM_MODEL").unwrap_or_else(|_| super::config::default_llm_config().model);
 
     import(app, ProviderKind::Llm, base_url, model, api_key, "LLM");
+}
+
+#[cfg(debug_assertions)]
+fn seed_exa() {
+    if matches!(secrets::get_exa_api_key(), Ok(Some(_))) {
+        return;
+    }
+
+    let Ok(api_key) = std::env::var("EXA_API_KEY") else {
+        return;
+    };
+    if api_key.trim().is_empty() {
+        return;
+    }
+
+    if let Err(error) = secrets::set_exa_api_key(&api_key) {
+        tracing::warn!("Failed to seed Exa API key from .env: {error}");
+        return;
+    }
+    tracing::info!("Seeded Exa API key from .env (dev-only fallback).");
 }
 
 #[cfg(debug_assertions)]

@@ -335,6 +335,8 @@ fn spawn_transcription(
 
                 let segment = TranscriptSegment {
                     id: uuid_like_id(),
+                    source: "system".to_string(),
+                    speaker: "interviewer".to_string(),
                     text: trimmed.to_string(),
                     start_ms,
                     end_ms,

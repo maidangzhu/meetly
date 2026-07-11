@@ -1,9 +1,12 @@
 import { AUTO_ASSIST_MIN_CONFIDENCE, FULL_SESSION_SEGMENT_LIMIT } from "./constants";
+import { summarizeContextDocuments } from "./contextDocuments";
 import { debugLog } from "./platform";
 import type {
   AskContext,
   CoachTrigger,
+  ContextDocument,
   LatestQuestionCandidate,
+  MeetingPerspective,
   QuestionCandidate,
   QuestionKind,
   TranscriptSegment,
@@ -208,7 +211,11 @@ export function transcriptSimilarity(left: string, right: string) {
   return intersection / (leftGrams.size + rightGrams.size - intersection);
 }
 
-export function buildInterviewAskContext(segments: TranscriptSegment[]): AskContext | null {
+export function buildInterviewAskContext(
+  segments: TranscriptSegment[],
+  perspective: MeetingPerspective = "candidate",
+  documents: ContextDocument[] = []
+): AskContext | null {
   const ordered = [...segments].sort((left, right) => left.endMs - right.endMs);
   const newestEndMs = ordered[ordered.length - 1]?.endMs ?? 0;
   const recentSegments = ordered.filter((segment) => newestEndMs - segment.endMs <= 120_000);
@@ -218,29 +225,46 @@ export function buildInterviewAskContext(segments: TranscriptSegment[]): AskCont
   const recentTranscript = formatTranscriptBlock(recentSegments);
   const fullTranscript = formatTranscriptBlock(fullSegments);
   const latestSegment = recentSegments[recentSegments.length - 1];
+  const documentContext = summarizeContextDocuments(documents);
   const latest: LatestQuestionCandidate = {
     text: "模型根据完整转写上下文自行判断",
     confidence: 1,
     reason: "model_decides_from_transcript",
   };
-  const userMessage = [
-    "The user is in a live interview. The app has been continuously transcribing microphone audio.",
-    "The user pressed Enter to ask for help right now.",
-    "Do not rely on any app-extracted question. Infer the current interviewer question, unresolved prompt, or best next response directly from the transcript.",
-    "Ignore microphone checks, greetings, filler words, and old questions unless the recent transcript makes them relevant.",
-    "Prioritize the most recent meaningful interviewer prompt and the user's current answer state. If the user is already answering, help continue, correct, or tighten that answer.",
-    "",
-    `Recent transcript:\n${recentTranscript}`,
-    "",
-    `Full session transcript:\n${fullTranscript}`,
-  ].join("\n");
+  const userMessage =
+    perspective === "interviewer"
+      ? [
+          "The user is conducting a live interview. The app has been continuously transcribing meeting audio.",
+          "The user pressed Enter to ask for interviewer-side help right now.",
+          "Infer the candidate's latest answer, ambiguity, weakness, or signal from the transcript.",
+          "Suggest the next interviewer move: a follow-up question, clarification prompt, or evaluation probe.",
+          "The goal is to fairly evaluate the candidate's evidence and fit, not to trick or embarrass them.",
+          "Ignore microphone checks, greetings, filler words, and old topics unless the recent transcript makes them relevant.",
+          documentContext ? `Candidate/reference documents:\n${documentContext}` : "Candidate/reference documents: (none provided)",
+          "",
+          `Recent transcript:\n${recentTranscript}`,
+          "",
+          `Full session transcript:\n${fullTranscript}`,
+        ].join("\n")
+      : [
+          "The user is in a live interview. The app has been continuously transcribing meeting audio.",
+          "The user pressed Enter to ask for help right now.",
+          "Do not rely on any app-extracted question. Infer the current interviewer question, unresolved prompt, or best next response directly from the transcript.",
+          "Ignore microphone checks, greetings, filler words, and old questions unless the recent transcript makes them relevant.",
+          "Prioritize the most recent meaningful interviewer prompt and the user's current answer state. If the user is already answering, help continue, correct, or tighten that answer.",
+          documentContext ? `User resume/background documents:\n${documentContext}` : "User resume/background documents: (none provided)",
+          "",
+          `Recent transcript:\n${recentTranscript}`,
+          "",
+          `Full session transcript:\n${fullTranscript}`,
+        ].join("\n");
 
   return {
     latest,
     recentSegments,
     fullSegments,
     userMessage,
-    preview: `model_decides latest_segment=${latestSegment.text.slice(0, 120)} recent_tail=${recentTranscript.slice(-220)}`,
+    preview: `model_decides perspective=${perspective} latest_segment=${latestSegment.text.slice(0, 120)} recent_tail=${recentTranscript.slice(-220)}`,
   };
 }
 
@@ -282,9 +306,12 @@ export function coachTriggerLabel(trigger: CoachTrigger) {
   if (trigger === "agent_enter") return "主动唤醒";
   if (trigger === "agent_stt_question") return "问题救场";
   if (trigger === "session_started") return "开场";
+  if (trigger === "research_signal") return "资料检索";
+  if (trigger === "context_signal") return "上下文提醒";
+  if (trigger === "question_detected") return "问题救场";
   if (trigger === "manual_ask_done") return "回答补位";
   if (trigger === "heartbeat") return "主动提醒";
-  return "问题救场";
+  return "场边提示";
 }
 
 function isFillerTranscript(text: string) {

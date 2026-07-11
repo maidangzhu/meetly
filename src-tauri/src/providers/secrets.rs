@@ -35,6 +35,8 @@ fn account_for(kind: ProviderKind) -> &'static str {
     }
 }
 
+const EXA_API_KEY_ACCOUNT: &str = "exa_api_key";
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct StoredSecrets {
     #[serde(flatten)]
@@ -101,4 +103,17 @@ pub fn get_api_key(kind: ProviderKind) -> Result<Option<String>> {
 /// exposing the key value.
 pub fn has_api_key(kind: ProviderKind) -> Result<bool> {
     Ok(get_api_key(kind)?.is_some())
+}
+
+pub fn set_exa_api_key(api_key: &str) -> Result<()> {
+    let mut secrets = read_all()?;
+    secrets
+        .entries
+        .insert(EXA_API_KEY_ACCOUNT.to_string(), api_key.to_string());
+    write_all(&secrets)
+}
+
+pub fn get_exa_api_key() -> Result<Option<String>> {
+    let secrets = read_all()?;
+    Ok(secrets.entries.get(EXA_API_KEY_ACCOUNT).cloned())
 }

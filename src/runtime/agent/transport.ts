@@ -1,24 +1,45 @@
-import type { AssistantSuggestion } from "../../app/types";
-import { safeInvoke } from "../../app/platform";
+import type { AssistantSuggestion, CoachToolTrace } from "../../app/types";
 import type { AgentPrompt } from "./prompt";
+import { runPiObserver } from "../piObserver";
 
 export type AgentTransport = {
-  complete(prompt: AgentPrompt): Promise<AssistantSuggestion>;
+  complete(prompt: AgentPrompt, callbacks?: AgentTransportCallbacks): Promise<AssistantSuggestion>;
 };
 
-export function createTauriAgentTransport(): AgentTransport {
+export type AgentTransportCallbacks = {
+  onDelta?: (delta: string) => void;
+  onToolEnd?: (name: string, isError: boolean) => void;
+  onToolStart?: (name: string) => void;
+  onToolTrace?: (trace: CoachToolTrace) => void;
+};
+
+export function createPiCoachTransport(): AgentTransport {
   return {
-    async complete(prompt) {
-      const suggestion = await safeInvoke<AssistantSuggestion>("complete_assistant_with_question", {
-        mode: "interview",
-        question: prompt.text,
+    async complete(prompt, callbacks) {
+      const result = await runPiObserver({
+        documents: prompt.snapshot.documents,
+        perspective: prompt.snapshot.perspective,
+        prompt: prompt.text,
+        sessionId: prompt.snapshot.sessionId ?? "meetly-coach",
+        trigger: toObserverTrigger(prompt.wake.kind),
+        onDelta: callbacks?.onDelta,
+        onToolEnd: callbacks?.onToolEnd,
+        onToolStart: callbacks?.onToolStart,
+        onToolTrace: callbacks?.onToolTrace,
       });
 
-      if (!suggestion) {
-        throw new Error("Tauri LLM provider is unavailable.");
-      }
-
-      return suggestion;
+      return {
+        answer: result.text,
+        bullets: [],
+        clarifyingQuestion: null,
+      };
     },
   };
+}
+
+function toObserverTrigger(kind: AgentPrompt["wake"]["kind"]) {
+  if (kind === "enter") return "manual_ask_done";
+  if (kind === "session_start") return "session_started";
+  if (kind === "stt_signal") return "context_signal";
+  return "question_detected";
 }

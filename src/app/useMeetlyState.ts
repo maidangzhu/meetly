@@ -5,8 +5,11 @@ import type {
   AutoAssistHint,
   CoachActivity,
   CoachMessage,
+  CoachToolTrace,
+  ContextDocument,
   InterviewSession,
   IslandState,
+  MeetingPerspective,
   OpenPanel,
   PrefetchCache,
   PrefetchInFlight,
@@ -28,6 +31,9 @@ export function useMeetlyState() {
   const [transcriptHistory, setTranscriptHistory] = useState<TranscriptSegment[]>([]);
   const [transcriptError, setTranscriptError] = useState<string | null>(null);
   const [assistantMode, setAssistantMode] = useState<AssistantMode>("interview");
+  const [meetingPerspective, setMeetingPerspective] = useState<MeetingPerspective>("candidate");
+  const [contextDocuments, setContextDocuments] = useState<ContextDocument[]>([]);
+  const [contextDocumentMessage, setContextDocumentMessage] = useState<string | null>(null);
   const [assistantSuggestion, setAssistantSuggestion] = useState<AssistantSuggestion | null>(null);
   const [assistantDraft, setAssistantDraft] = useState("");
   const [assistantError, setAssistantError] = useState<string | null>(null);
@@ -56,6 +62,7 @@ export function useMeetlyState() {
   const currentSegmentLastVoiceAtRef = useRef(0);
   const transcriptHistoryRef = useRef<TranscriptSegment[]>([]);
   const interviewSessionRef = useRef<InterviewSession | null>(null);
+  const contextDocumentsRef = useRef<ContextDocument[]>([]);
   const autoAssistHintRef = useRef<AutoAssistHint | null>(null);
   const prefetchCacheRef = useRef<PrefetchCache | null>(null);
   const prefetchInFlightRef = useRef<PrefetchInFlight | null>(null);
@@ -63,6 +70,7 @@ export function useMeetlyState() {
   const lastHintShownAtRef = useRef(0);
   const hintExpiryTimerRef = useRef<number | null>(null);
   const coachMessagesRef = useRef<CoachMessage[]>([]);
+  const coachToolTracesRef = useRef<CoachToolTrace[]>([]);
   const coachInFlightRef = useRef(false);
   const coachWakeStateRef = useRef(createInitialCoachWakeState());
   const coachActivityClearTimerRef = useRef<number | null>(null);
@@ -92,6 +100,12 @@ export function useMeetlyState() {
     setTranscriptError,
     assistantMode,
     setAssistantMode,
+    meetingPerspective,
+    setMeetingPerspective,
+    contextDocuments,
+    setContextDocuments,
+    contextDocumentMessage,
+    setContextDocumentMessage,
     assistantSuggestion,
     setAssistantSuggestion,
     assistantDraft,
@@ -130,6 +144,7 @@ export function useMeetlyState() {
     currentSegmentLastVoiceAtRef,
     transcriptHistoryRef,
     interviewSessionRef,
+    contextDocumentsRef,
     autoAssistHintRef,
     prefetchCacheRef,
     prefetchInFlightRef,
@@ -137,6 +152,7 @@ export function useMeetlyState() {
     lastHintShownAtRef,
     hintExpiryTimerRef,
     coachMessagesRef,
+    coachToolTracesRef,
     coachInFlightRef,
     coachWakeStateRef,
     coachActivityClearTimerRef,

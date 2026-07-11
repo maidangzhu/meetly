@@ -1,4 +1,4 @@
-import type { AssistantSuggestion } from "../../app/types";
+import type { AssistantSuggestion, CoachToolTrace } from "../../app/types";
 import { ContextStore } from "./contextStore";
 import { buildAgentPrompt } from "./prompt";
 import type { AgentTransport } from "./transport";
@@ -9,10 +9,14 @@ const STT_WAKE_COOLDOWN_MS = 10_000;
 const RECENT_EVIDENCE_TTL_MS = 60_000;
 
 export type AgentRuntimeCallbacks = {
+  onDelta?: (delta: string, wake: WakeEvent) => void;
   onWakeStart?: (wake: WakeEvent) => void;
   onWakeSkipped?: (wake: WakeEvent, reason: string) => void;
   onMessage: (suggestion: AssistantSuggestion, wake: WakeEvent) => void;
   onError: (message: string, wake: WakeEvent) => void;
+  onToolEnd?: (name: string, isError: boolean, wake: WakeEvent) => void;
+  onToolStart?: (name: string, wake: WakeEvent) => void;
+  onToolTrace?: (trace: CoachToolTrace, wake: WakeEvent) => void;
 };
 
 export class AgentRuntime {
@@ -37,7 +41,7 @@ export class AgentRuntime {
   }
 
   wake(event: WakeEvent) {
-    if (event.kind === "stt_question" && (this.inFlight || this.queue.length > 0)) {
+    if (isTranscriptWake(event) && (this.inFlight || this.queue.length > 0)) {
       this.pendingSttWake = event;
       this.callbacks.onWakeSkipped?.(event, "stt_coalesced_while_in_flight");
       return;
@@ -66,7 +70,12 @@ export class AgentRuntime {
         try {
           const snapshot = this.context.snapshot(AGENT_CONTEXT_WINDOW_MS);
           const prompt = buildAgentPrompt(wake, snapshot);
-          const suggestion = await this.transport.complete(prompt);
+          const suggestion = await this.transport.complete(prompt, {
+            onDelta: (delta) => this.callbacks.onDelta?.(delta, wake),
+            onToolEnd: (name, isError) => this.callbacks.onToolEnd?.(name, isError, wake),
+            onToolStart: (name) => this.callbacks.onToolStart?.(name, wake),
+            onToolTrace: (trace) => this.callbacks.onToolTrace?.(trace, wake),
+          });
           this.markHandled(wake);
           this.callbacks.onMessage(suggestion, wake);
         } catch (error) {
@@ -80,7 +89,7 @@ export class AgentRuntime {
   }
 
   private getSkipReason(event: WakeEvent) {
-    if (event.kind === "enter") {
+    if (event.kind === "enter" || event.kind === "session_start") {
       return null;
     }
 
@@ -135,6 +144,10 @@ export class AgentRuntime {
       void this.drain();
     }, delayMs);
   }
+}
+
+function isTranscriptWake(event: WakeEvent) {
+  return event.kind === "stt_question" || event.kind === "stt_signal";
 }
 
 function normalizeEvidence(text: string) {

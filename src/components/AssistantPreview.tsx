@@ -5,6 +5,8 @@ import type {
   AutoAssistHint,
   CoachActivity,
   CoachMessage,
+  CoachToolTrace,
+  ContextDocument,
   PartialTranscript,
   PrefetchStatus,
   TranscriptSegment,
@@ -20,6 +22,7 @@ type AssistantPreviewProps = {
   assistantDraft: string;
   assistantError: string | null;
   isAsking: boolean;
+  contextDocuments: ContextDocument[];
   coachMessages: CoachMessage[];
   coachDraft: CoachMessage | null;
   coachActivity: CoachActivity | null;
@@ -38,6 +41,7 @@ export function AssistantPreview({
   assistantDraft,
   assistantError,
   isAsking,
+  contextDocuments,
   coachMessages,
   coachDraft,
   coachActivity,
@@ -60,6 +64,7 @@ export function AssistantPreview({
         )}
 
         <div className="shrink-0">
+          <ContextDocumentsCard contextDocuments={contextDocuments} />
           <SuggestionCard
             assistantDraft={assistantDraft}
             assistantError={assistantError}
@@ -83,6 +88,29 @@ export function AssistantPreview({
         coachActivity={coachActivity}
         isCoachThinking={isCoachThinking}
       />
+    </div>
+  );
+}
+
+function ContextDocumentsCard({ contextDocuments }: { contextDocuments: ContextDocument[] }) {
+  if (contextDocuments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mb-3 rounded-xl border border-white/[0.08] bg-white/[0.045] p-3">
+      <p className="m-0 text-[11px] text-white/60">资料上下文</p>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {contextDocuments.map((document) => (
+          <span
+            key={document.id}
+            className="inline-flex h-7 max-w-[180px] items-center rounded-md bg-black/[0.16] px-2 text-[12px] text-white/62"
+            title={document.name}
+          >
+            <span className="truncate">{document.name}</span>
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -165,6 +193,7 @@ function CoachCard({
         {coachMessages.map((message) => (
           <li key={message.id} className="rounded-lg bg-black/15 px-2.5 py-2">
             <p className="m-0 text-[11px] text-white/40">{coachTriggerLabel(message.trigger)}</p>
+            <CoachToolTraceList traces={message.toolTraces} />
             <p className="mt-1 whitespace-pre-wrap text-[13px] leading-normal text-white/82">{message.text}</p>
           </li>
         ))}
@@ -177,6 +206,7 @@ function CoachCard({
             {coachActivity?.detail && (
               <p className="mt-1 text-[12px] leading-normal text-white/45">{coachActivity.detail}</p>
             )}
+            <CoachToolTraceList traces={coachDraft.toolTraces} />
             {coachDraft.text && (
               <p className="mt-1 whitespace-pre-wrap text-[13px] leading-normal text-white/82">{coachDraft.text}</p>
             )}
@@ -185,6 +215,53 @@ function CoachCard({
       </ul>
     </aside>
   );
+}
+
+function CoachToolTraceList({ traces }: { traces: CoachToolTrace[] }) {
+  if (traces.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2 flex flex-col gap-1.5">
+      {traces.map((trace) => (
+        <div
+          key={trace.id}
+          className="rounded-md border border-white/[0.08] bg-black/[0.16] px-2 py-1.5"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <p className="m-0 flex min-w-0 items-center gap-1.5 text-[11px] text-white/55">
+              <Wrench className="h-3 w-3 shrink-0" />
+              <span className="min-w-0 truncate">{trace.label}</span>
+            </p>
+            <span className={`shrink-0 text-[10px] ${toolTraceStatusClass(trace.status)}`}>
+              {toolTraceStatusLabel(trace.status)}
+            </span>
+          </div>
+          {trace.query && (
+            <p className="mt-1 truncate text-[11px] text-white/42">输入：{trace.query}</p>
+          )}
+          {trace.content && (
+            <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap rounded bg-white/[0.04] p-1.5 text-[11px] leading-normal text-white/56">
+              {trace.content}
+            </pre>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function toolTraceStatusLabel(status: CoachToolTrace["status"]) {
+  if (status === "running") return "进行中";
+  if (status === "error") return "失败";
+  return "完成";
+}
+
+function toolTraceStatusClass(status: CoachToolTrace["status"]) {
+  if (status === "running") return "text-[#baf8cf]";
+  if (status === "error") return "text-[#ff7a8a]";
+  return "text-white/45";
 }
 
 function CoachActivityPill({ activity }: { activity: CoachActivity }) {

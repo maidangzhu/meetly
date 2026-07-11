@@ -25,7 +25,11 @@ export function useAssistantAsk(
     try {
       await flushCurrentMicSegment();
 
-      const askContext = buildInterviewAskContext(ctx.transcriptHistoryRef.current);
+      const askContext = buildInterviewAskContext(
+        ctx.transcriptHistoryRef.current,
+        ctx.meetingPerspective,
+        ctx.contextDocumentsRef.current
+      );
       if (!askContext) {
         debugLog("[ask] blocked no_mic_transcript");
         throw new Error("还没有面试/对话转写。先点左侧麦克风开启面试，等出第一段转写后再 Ask。");

@@ -12,6 +12,8 @@ const MAX_AGE_MS: u64 = 180_000; // 3 minutes
 #[serde(rename_all = "camelCase")]
 pub struct TranscriptSegment {
     pub id: String,
+    pub source: String,
+    pub speaker: String,
     pub text: String,
     pub start_ms: u64,
     pub end_ms: u64,
@@ -64,6 +66,8 @@ mod tests {
     fn segment(id: &str, start_ms: u64, end_ms: u64) -> TranscriptSegment {
         TranscriptSegment {
             id: id.to_string(),
+            source: "system".to_string(),
+            speaker: "interviewer".to_string(),
             text: format!("segment {id}"),
             start_ms,
             end_ms,

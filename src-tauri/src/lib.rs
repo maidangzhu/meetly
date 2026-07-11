@@ -6,8 +6,6 @@ mod domain;
 mod providers;
 mod window;
 
-use tauri::Manager;
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
@@ -48,6 +46,8 @@ pub fn run() {
             providers::commands::test_llm_config,
             providers::commands::transcribe_audio,
             providers::commands::get_llm_runtime_config_for_pi,
+            providers::web::web_fetch,
+            app::document_service::extract_pdf_text,
             app::assistant_service::ask_assistant,
             app::assistant_service::ask_assistant_with_question,
             app::assistant_service::complete_assistant_with_question,
@@ -56,12 +56,6 @@ pub fn run() {
         .setup(|app| {
             window::setup_island_window(app)?;
             providers::dev_env::seed_from_dotenv_if_missing(app.handle());
-            if !app_state::is_onboarding_completed() {
-                if let Some(settings) = app.get_webview_window("settings") {
-                    settings.show()?;
-                    settings.set_focus()?;
-                }
-            }
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
-use tauri::{AppHandle, WebviewWindow};
+use tauri::AppHandle;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::providers::{config::ProviderKind, secrets};
@@ -46,12 +46,6 @@ fn write_state(state: &StoredAppState) -> Result<()> {
     fs::write(state_path()?, bytes).context("Failed to write app state")
 }
 
-pub fn is_onboarding_completed() -> bool {
-    read_state()
-        .map(|state| state.onboarding_completed)
-        .unwrap_or(false)
-}
-
 #[tauri::command]
 pub fn get_onboarding_status() -> Result<OnboardingStatus, String> {
     let state = read_state().map_err(|error| error.to_string())?;
@@ -63,11 +57,10 @@ pub fn get_onboarding_status() -> Result<OnboardingStatus, String> {
 }
 
 #[tauri::command]
-pub fn complete_onboarding(window: WebviewWindow) -> Result<(), String> {
+pub fn complete_onboarding() -> Result<(), String> {
     let mut state = read_state().map_err(|error| error.to_string())?;
     state.onboarding_completed = true;
-    write_state(&state).map_err(|error| error.to_string())?;
-    window.hide().map_err(|error| error.to_string())
+    write_state(&state).map_err(|error| error.to_string())
 }
 
 #[tauri::command]

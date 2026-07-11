@@ -12,6 +12,12 @@ time, during a live interview. Speak in the candidate's voice: steady, \
 structured, first person. Do not coach the user in third person (\"you \
 could say...\") — write the actual words the candidate should say.";
 
+const INTERVIEWER_PROMPT: &str = "\
+You are helping an interviewer conduct a live interview. Focus on the \
+candidate's latest answer, missing evidence, ambiguity, and signal quality. \
+Suggest the next thing the interviewer should ask or probe. Do not answer as \
+the candidate.";
+
 const MEETING_PROMPT: &str = "\
 You are helping a meeting participant respond to what was just discussed. \
 Summarize the key point being made and propose a clear next step the user \
@@ -32,6 +38,7 @@ No text outside the JSON object.";
 pub fn build_system_prompt(mode: AssistantMode) -> String {
     let mode_instructions = match mode {
         AssistantMode::Interview => INTERVIEW_PROMPT,
+        AssistantMode::Interviewer => INTERVIEWER_PROMPT,
         AssistantMode::Meeting => MEETING_PROMPT,
         AssistantMode::Sales => SALES_PROMPT,
     };
@@ -70,6 +77,8 @@ mod tests {
     fn segment(text: &str, end_ms: u64) -> TranscriptSegmentDto {
         TranscriptSegmentDto {
             id: "test".to_string(),
+            source: "system".to_string(),
+            speaker: "interviewer".to_string(),
             text: text.to_string(),
             start_ms: end_ms.saturating_sub(1000),
             end_ms,
@@ -97,6 +106,7 @@ now, using only this meeting context.\n\nRecent transcript:\n[-4s] hello\n[-0s] 
     fn every_mode_prompt_mentions_json_contract() {
         for mode in [
             AssistantMode::Interview,
+            AssistantMode::Interviewer,
             AssistantMode::Meeting,
             AssistantMode::Sales,
         ] {

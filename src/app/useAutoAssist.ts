@@ -11,8 +11,8 @@ export function useAutoAssist(ctx: MeetlyState, session: SessionActions, agent: 
   const addTranscriptSegment = useCallback((segment: TranscriptSegment) => {
     const normalizedSegment: TranscriptSegment = {
       ...segment,
-      source: segment.source ?? "microphone",
-      speaker: segment.speaker ?? "unknown",
+      source: segment.source ?? "system",
+      speaker: segment.speaker ?? (segment.source === "microphone" ? "user" : "interviewer"),
     };
 
     if (isLikelyDuplicateTranscript(normalizedSegment, ctx.transcriptHistoryRef.current)) {

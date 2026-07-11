@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { debugLog } from "./platform";
-import type { AutoAssistHint, InterviewSession } from "./types";
+import type { AutoAssistHint, ContextDocument, InterviewSession } from "./types";
 import type { MeetlyState } from "./useMeetlyState";
 
 export function useSessionActions(ctx: MeetlyState) {
@@ -66,9 +66,37 @@ export function useSessionActions(ctx: MeetlyState) {
     setCurrentAutoAssistHint(null);
   }, [ctx, setCurrentAutoAssistHint, updateInterviewSession]);
 
+  const addContextDocuments = useCallback((documents: ContextDocument[]) => {
+    if (documents.length === 0) {
+      return;
+    }
+
+    const next = [...ctx.contextDocumentsRef.current, ...documents].slice(-6);
+    ctx.contextDocumentsRef.current = next;
+    ctx.setContextDocuments(next);
+    updateInterviewSession((current) => ({
+      ...current,
+      documents: next,
+    }));
+    debugLog(`[context] documents added count=${documents.length} total=${next.length}`);
+  }, [ctx, updateInterviewSession]);
+
+  const removeContextDocument = useCallback((id: string) => {
+    const next = ctx.contextDocumentsRef.current.filter((document) => document.id !== id);
+    ctx.contextDocumentsRef.current = next;
+    ctx.setContextDocuments(next);
+    updateInterviewSession((current) => ({
+      ...current,
+      documents: next,
+    }));
+    debugLog(`[context] document removed id=${id} total=${next.length}`);
+  }, [ctx, updateInterviewSession]);
+
   return {
     activeSessionTranscriptCount: ctx.interviewSession?.transcript.length ?? 0,
+    addContextDocuments,
     dismissAutoAssistHint,
+    removeContextDocument,
     setCurrentAutoAssistHint,
     setCurrentInterviewSession,
     updateInterviewSession,

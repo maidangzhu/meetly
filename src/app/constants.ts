@@ -4,8 +4,6 @@ export const ICON_BUTTON =
   "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border-0 bg-white/[0.08] text-[#f5f5f5] transition-[background,color,transform] duration-150 hover:bg-white/[0.14] active:scale-[0.98] [&_svg]:h-4 [&_svg]:w-4";
 export const SESSION_BUTTON =
   "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border-0 bg-white/[0.08] px-2.5 text-[13px] font-medium text-[#f5f5f5] transition-[background,color,transform] duration-150 hover:bg-white/[0.14] active:scale-[0.98] [&_svg]:h-4 [&_svg]:w-4";
-export const STEALTH_STATUS_BUTTON =
-  "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border-0 bg-white/[0.08] px-2.5 text-[12px] font-medium text-[#f5f5f5] transition-[background,color,transform] duration-150 hover:bg-white/[0.14] active:scale-[0.98] [&_svg]:h-4 [&_svg]:w-4";
 export const GHOST_ICON_BUTTON =
   "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border-0 bg-transparent text-white/60 transition-[background,color,transform] duration-150 hover:bg-white/[0.14] active:scale-[0.98] [&_svg]:h-4 [&_svg]:w-4";
 export const DRAG_CURSOR = "cursor-grab active:cursor-grabbing";

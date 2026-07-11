@@ -6,3 +6,4 @@ pub mod llm;
 pub mod secrets;
 pub mod storage;
 pub mod stt;
+pub mod web;

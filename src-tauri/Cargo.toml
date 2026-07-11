@@ -20,6 +20,7 @@ dirs = "5"
 dotenvy = "0.15"
 futures-util = "0.3"
 hound = "3.5"
+pdf-extract = "0.12"
 reqwest = { version = "0.12", features = ["json", "multipart", "stream"] }
 ringbuf = "0.4"
 tauri = { version = "2", features = ["macos-private-api"] }
