@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
 import { OnboardingPanel, type OnboardingStatus } from "./settings/OnboardingPanel";
 import { UpdateSection } from "./settings/UpdateSection";
+import type { DictationSettings, DictationStatus } from "./app/dictation/types";
+import { DEFAULT_DICTATION_SETTINGS } from "./app/dictation/types";
 
 type ProviderKind = "stt" | "llm";
 
@@ -266,6 +268,217 @@ export function DiagnosticsSection() {
   );
 }
 
+function DictationSection() {
+  const [settings, setSettings] = useState<DictationSettings>(DEFAULT_DICTATION_SETTINGS);
+  const [status, setStatus] = useState<DictationStatus | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const next = await invoke<DictationStatus>("get_dictation_status");
+      setStatus(next);
+      setSettings(next.settings);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const save = async () => {
+    setIsSaving(true);
+    setMessage(null);
+    try {
+      const next = await invoke<DictationStatus>("save_dictation_settings", { settings });
+      setStatus(next);
+      setSettings(next.settings);
+      setMessage("Voice dictation settings saved.");
+    } catch (error) {
+      setMessage(`Failed to save: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const testPaste = async () => {
+    setIsTesting(true);
+    setMessage(null);
+    try {
+      const result = await invoke<{ pasted: boolean; message: string }>("test_dictation_paste");
+      setMessage(result.pasted ? "Paste test completed." : result.message);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  return (
+    <section className="mb-6 rounded-xl border border-white/[0.08] bg-white/[0.04] p-4">
+      <h2 className="m-0 text-sm font-semibold">Voice dictation</h2>
+      <p className="mt-1 mb-4 text-xs leading-relaxed text-white/50">
+        Hold the shortcut, speak, then release. Meetly transcribes, polishes, and pastes into the original app.
+      </p>
+
+      <label className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-white/[0.08] bg-white/[0.04] p-3 text-sm">
+        <span>
+          <span className="block text-[13px] font-medium">Enable voice dictation</span>
+          <span className="block text-xs text-white/45">Runs independently from Meeting and Coach.</span>
+        </span>
+        <input
+          type="checkbox"
+          checked={settings.enabled}
+          onChange={(event) => setSettings((current) => ({ ...current, enabled: event.target.checked }))}
+        />
+      </label>
+
+      <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <label>
+          <span className={LABEL}>Primary shortcut</span>
+          <input
+            className={FIELD}
+            value={settings.shortcut}
+            onChange={(event) => setSettings((current) => ({ ...current, shortcut: event.target.value }))}
+            placeholder="Fn+Space"
+          />
+        </label>
+        <label>
+          <span className={LABEL}>Fallback shortcut</span>
+          <input
+            className={FIELD}
+            value={settings.fallbackShortcut}
+            onChange={(event) => setSettings((current) => ({ ...current, fallbackShortcut: event.target.value }))}
+            placeholder="Alt+Space"
+          />
+        </label>
+      </div>
+
+      <label className="mb-3 block">
+        <span className={LABEL}>Activation mode</span>
+        <select
+          className={FIELD}
+          value={settings.activationMode}
+          onChange={(event) =>
+            setSettings((current) => ({
+              ...current,
+              activationMode: event.target.value as DictationSettings["activationMode"],
+            }))
+          }
+        >
+          <option value="push_to_talk">Hold to talk</option>
+          <option value="toggle">Press once to start / again to stop</option>
+        </select>
+      </label>
+
+      <div className="mb-4 grid grid-cols-1 gap-2">
+        <DictationToggle
+          label="AI polish"
+          description="Remove filler and fix punctuation without adding new ideas."
+          checked={settings.aiPolishEnabled}
+          onChange={(checked) => setSettings((current) => ({ ...current, aiPolishEnabled: checked }))}
+        />
+        <DictationToggle
+          label="Auto paste"
+          description="Paste into the app that was active when dictation started."
+          checked={settings.autoPasteEnabled}
+          onChange={(checked) => setSettings((current) => ({ ...current, autoPasteEnabled: checked }))}
+        />
+        <DictationToggle
+          label="Keep result in clipboard"
+          description="Leaves the final text available if automatic paste fails."
+          checked={settings.keepResultInClipboard}
+          onChange={(checked) => setSettings((current) => ({ ...current, keepResultInClipboard: checked }))}
+        />
+      </div>
+
+      <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <DiagnosticItem
+          label="Microphone access"
+          value={formatMicrophonePermission(status?.microphonePermission)}
+          state={status?.microphonePermission === "authorized" ? "ok" : "pending"}
+        />
+        <DiagnosticItem
+          label="Keyboard access"
+          value={status?.accessibilityGranted ? "Granted" : "Required for Fn and auto paste"}
+          state={status?.accessibilityGranted ? "ok" : "pending"}
+        />
+        <DiagnosticItem
+          label="Shortcut backend"
+          value={status?.shortcutBackend ?? "Checking..."}
+          state={status?.shortcutBackend && status.shortcutBackend !== "unavailable" ? "ok" : "pending"}
+        />
+      </div>
+
+      {status?.shortcutError && <p className="mb-3 text-xs text-[#ff9ba8]">{status.shortcutError}</p>}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button className={PRIMARY_BUTTON} disabled={isSaving} onClick={() => void save()}>
+          {isSaving ? "Saving..." : "Save dictation"}
+        </button>
+        {!status?.accessibilityGranted && (
+          <button
+            className={SECONDARY_BUTTON}
+            onClick={() =>
+              void invoke("request_dictation_accessibility")
+                .then(load)
+                .catch((error) => setMessage(error instanceof Error ? error.message : String(error)))
+            }
+          >
+            Open Keyboard Access
+          </button>
+        )}
+        <button className={SECONDARY_BUTTON} disabled={isTesting} onClick={() => void testPaste()}>
+          {isTesting ? "Testing..." : "Test paste"}
+        </button>
+      </div>
+      {message && <p className="mt-2 mb-0 text-xs text-white/60">{message}</p>}
+    </section>
+  );
+}
+
+function formatMicrophonePermission(permission: DictationStatus["microphonePermission"] | undefined) {
+  switch (permission) {
+    case "authorized":
+      return "Granted";
+    case "not_determined":
+      return "Will ask on first recording";
+    case "denied":
+      return "Denied in System Settings";
+    case "restricted":
+      return "Restricted by macOS";
+    case "unknown":
+      return "Unknown";
+    default:
+      return "Checking...";
+  }
+}
+
+function DictationToggle({
+  checked,
+  description,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  description: string;
+  label: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2.5">
+      <span>
+        <span className="block text-[13px] font-medium">{label}</span>
+        <span className="block text-xs text-white/45">{description}</span>
+      </span>
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+    </label>
+  );
+}
+
 function DiagnosticItem({
   label,
   value,
@@ -345,6 +558,7 @@ export function SettingsContent({
         kind="llm"
         onSaved={() => void loadOnboardingStatus()}
       />
+      <DictationSection />
       <DiagnosticsSection />
       <UpdateSection />
       <FooterActions onQuit={onQuit} />

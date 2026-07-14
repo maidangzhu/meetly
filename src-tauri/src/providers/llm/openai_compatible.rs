@@ -23,24 +23,26 @@ impl OpenAiCompatibleLlm {
             client: reqwest::Client::new(),
         }
     }
-}
 
-#[async_trait::async_trait]
-impl LlmProvider for OpenAiCompatibleLlm {
-    async fn complete(
+    pub async fn complete_text(
         &self,
         system_prompt: String,
         user_message: String,
-    ) -> Result<AssistantSuggestion> {
-        let body = json!({
+        temperature: f32,
+        disable_reasoning: bool,
+    ) -> Result<String> {
+        let mut body = json!({
             "model": self.model,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
             ],
-            "temperature": 0.3,
+            "temperature": temperature,
             "stream": false,
         });
+        if disable_reasoning && self.base_url.contains("siliconflow") {
+            body["enable_thinking"] = json!(false);
+        }
 
         let response = self
             .client
@@ -65,7 +67,21 @@ impl LlmProvider for OpenAiCompatibleLlm {
             .and_then(|content| content.as_str())
             .ok_or_else(|| anyhow!("LLM response missing choices[0].message.content"))?;
 
-        Ok(parse_suggestion(content))
+        Ok(content.trim().to_string())
+    }
+}
+
+#[async_trait::async_trait]
+impl LlmProvider for OpenAiCompatibleLlm {
+    async fn complete(
+        &self,
+        system_prompt: String,
+        user_message: String,
+    ) -> Result<AssistantSuggestion> {
+        let content = self
+            .complete_text(system_prompt, user_message, 0.3, false)
+            .await?;
+        Ok(parse_suggestion(&content))
     }
 }
 

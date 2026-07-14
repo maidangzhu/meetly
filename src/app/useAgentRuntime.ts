@@ -53,10 +53,18 @@ export function useAgentRuntime(ctx: MeetlyState) {
     contextRef.current?.setDocuments(ctx.contextDocuments);
   }, [ctx.contextDocuments]);
 
+  useEffect(() => {
+    contextRef.current?.setSessionConfig({
+      kind: ctx.sessionKind,
+      audioSource: ctx.audioSource,
+      goal: ctx.meetingGoal,
+    });
+  }, [ctx.audioSource, ctx.meetingGoal, ctx.sessionKind]);
+
   const pushTranscriptFinal = useCallback((segment: TranscriptSegment) => {
     contextRef.current?.pushTranscript(segment);
 
-    const wake = detectSttWake(segment);
+    const wake = detectSttWake(segment, ctx.sessionKind);
     if (!wake) {
       debugLog(`[agent] stt wake skipped segment=${segment.id}`);
       return;
@@ -64,7 +72,7 @@ export function useAgentRuntime(ctx: MeetlyState) {
 
     debugLog(`[agent] stt wake segment=${segment.id} reason=${wake.reason}`);
     runtimeRef.current?.wake(wake);
-  }, []);
+  }, [ctx.sessionKind]);
 
   const wakeEnter = useCallback(() => {
     const wake = createEnterWake();
@@ -116,6 +124,15 @@ function buildCallbacks(ctx: MeetlyState): AgentRuntimeCallbacks {
     },
     onWakeSkipped: (wake, reason) => {
       debugLog(`[agent] wake skipped wake=${wake.kind} reason=${reason}`);
+    },
+    onRetry: (attempt, reason, wake) => {
+      ctx.setCoachDraft(buildCoachMessage(wake, ""));
+      setCoachActivity(ctx, {
+        phase: "thinking",
+        label: "重新尝试",
+        detail: "上一请求超过 10 秒，已丢弃并重发",
+      });
+      debugLog(`[agent] coach retry wake=${wake.kind} attempt=${attempt} reason=${reason}`);
     },
     onMessage: (suggestion, wake) => {
       const message = buildCoachMessage(wake, suggestion.answer, ctx.coachToolTracesRef.current);

@@ -70,7 +70,7 @@ export function useWindowActions(ctx: MeetlyState) {
         icon: (
           <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#38d879] shadow-[0_0_0_0_rgb(56_216_121_/_0.42)] [animation:listening-dot-pulse_1.4s_infinite]" />
         ),
-        label: "面试中",
+        label: ctx.sessionKind === "meeting" ? "会议中" : "面试中",
         className: "text-[#38d879]",
       };
     }
@@ -80,7 +80,7 @@ export function useWindowActions(ctx: MeetlyState) {
       label: "",
       className: "",
     };
-  }, [ctx.state]);
+  }, [ctx.sessionKind, ctx.state]);
 
   return {
     openSettings,

@@ -2,6 +2,7 @@ mod app;
 mod app_state;
 mod audio;
 mod debug_log;
+mod dictation;
 mod domain;
 mod providers;
 mod window;
@@ -17,6 +18,9 @@ pub fn run() {
 
     let builder = tauri::Builder::default()
         .manage(audio::AudioState::default())
+        .manage(dictation::DictationState::default())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build());
@@ -39,6 +43,15 @@ pub fn run() {
             audio::start_listening,
             audio::stop_listening,
             debug_log::append_debug_log,
+            dictation::cancel_dictation_run,
+            dictation::finish_dictation_run,
+            dictation::get_dictation_status,
+            dictation::get_dictation_settings,
+            dictation::paste_dictation_text,
+            dictation::polish_dictation,
+            dictation::request_dictation_accessibility,
+            dictation::save_dictation_settings,
+            dictation::test_dictation_paste,
             providers::commands::save_provider_config,
             providers::commands::get_provider_config,
             providers::commands::has_api_key,
@@ -56,6 +69,7 @@ pub fn run() {
         .setup(|app| {
             window::setup_island_window(app)?;
             providers::dev_env::seed_from_dotenv_if_missing(app.handle());
+            dictation::initialize(app.handle());
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -81,6 +81,14 @@ pub fn recent_transcript(state: &AudioState, window_ms: u64) -> Vec<TranscriptSe
         .collect()
 }
 
+pub fn is_listening(state: &AudioState) -> bool {
+    state
+        .runtime
+        .lock()
+        .map(|runtime| runtime.task.is_some())
+        .unwrap_or(false)
+}
+
 /// Public DTO alias so callers outside this module don't need to reach into
 /// the private `transcript_buffer` submodule.
 pub type TranscriptSegmentDto = TranscriptSegment;

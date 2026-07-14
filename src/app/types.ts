@@ -1,6 +1,8 @@
 export type IslandState = "idle" | "listening" | "transcribing" | "thinking" | "error";
 export type OpenPanel = null | "assistant" | "perspective" | "settings";
 export type MeetingPerspective = "candidate" | "interviewer";
+export type SessionKind = "interview" | "meeting";
+export type AudioSource = "system" | "microphone";
 
 export type ContextDocumentKind = "resume" | "reference";
 
@@ -68,6 +70,9 @@ export type AskTurn = {
 
 export type InterviewSession = {
   id: string;
+  kind: SessionKind;
+  audioSource: AudioSource;
+  goal: string;
   startedAt: number;
   endedAt: number | null;
   status: SessionStatus;

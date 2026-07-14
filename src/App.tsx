@@ -6,6 +6,7 @@ import {
   EyeOff,
   FileText,
   GripVertical,
+  Handshake,
   Loader2,
   Mic,
   MicOff,
@@ -30,7 +31,10 @@ import {
 } from "./app/contextDocuments";
 import { questionKindLabel } from "./app/interviewLogic";
 import { safeInvoke } from "./app/platform";
-import type { MeetingPerspective } from "./app/types";
+import type { AudioSource, MeetingPerspective, SessionKind } from "./app/types";
+import { isActivePhase } from "./app/dictation/dictationReducer";
+import type { DictationViewState } from "./app/dictation/types";
+import { useDictation } from "./app/dictation/useDictation";
 import { useAgentRuntime } from "./app/useAgentRuntime";
 import { useAssistantAsk } from "./app/useAssistantAsk";
 import { useAutoAssist } from "./app/useAutoAssist";
@@ -50,8 +54,9 @@ export function App() {
   const windowActions = useWindowActions(ctx);
   const agent = useAgentRuntime(ctx);
   const autoAssist = useAutoAssist(ctx, session, agent);
-  const mic = useMicMeeting(ctx, agent, session, windowActions);
+  const mic = useMicMeeting(ctx, agent, autoAssist, session, windowActions);
   const assistant = useAssistantAsk(ctx, session, windowActions, mic.flushCurrentMicSegment);
+  const dictation = useDictation();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
 
@@ -195,8 +200,11 @@ export function App() {
             />
           ) : ctx.openPanel === "perspective" ? (
             <PerspectivePanel
+              audioSource={ctx.audioSource}
               closePanel={() => void windowActions.setPanel(null)}
+              meetingGoal={ctx.meetingGoal}
               perspective={ctx.meetingPerspective}
+              sessionKind={ctx.sessionKind}
               contextDocumentMessage={ctx.contextDocumentMessage}
               contextDocuments={ctx.contextDocuments}
               openFilePicker={openFilePicker}
@@ -204,6 +212,19 @@ export function App() {
               setPerspective={(perspective) => {
                 ctx.setMeetingPerspective(perspective);
                 ctx.setAssistantMode(perspective === "candidate" ? "interview" : "interviewer");
+              }}
+              setAudioSource={ctx.setAudioSource}
+              setMeetingGoal={ctx.setMeetingGoal}
+              setSessionKind={(kind) => {
+                ctx.setSessionKind(kind);
+                ctx.setAudioSource(kind === "meeting" ? "microphone" : "system");
+                ctx.setAssistantMode(
+                  kind === "meeting"
+                    ? "meeting"
+                    : ctx.meetingPerspective === "candidate"
+                      ? "interview"
+                      : "interviewer"
+                );
               }}
               startIslandDrag={windowActions.startIslandDrag}
               startMeeting={() => void mic.startMicMeeting()}
@@ -215,6 +236,7 @@ export function App() {
               contextDocuments={ctx.contextDocuments}
               ctx={ctx}
               dismissAutoAssistHint={session.dismissAutoAssistHint}
+              dictationState={dictation.state}
               setPanel={windowActions.setPanel}
               startIslandDrag={windowActions.startIslandDrag}
               toggleSession={toggleSession}
@@ -242,6 +264,7 @@ function IslandBar({
   contextDocuments,
   ctx,
   dismissAutoAssistHint,
+  dictationState,
   setPanel,
   startIslandDrag,
   toggleSession,
@@ -252,21 +275,23 @@ function IslandBar({
   contextDocuments: ReturnType<typeof useMeetlyState>["contextDocuments"];
   ctx: ReturnType<typeof useMeetlyState>;
   dismissAutoAssistHint: () => void;
+  dictationState: DictationViewState;
   setPanel: ReturnType<typeof useWindowActions>["setPanel"];
   startIslandDrag: ReturnType<typeof useWindowActions>["startIslandDrag"];
   toggleSession: () => void;
   toggleStealth: () => Promise<void>;
 }) {
-  const perspectiveLabel = getPerspectiveLabel(ctx.meetingPerspective);
+  const perspectiveLabel = ctx.sessionKind === "meeting" ? "会议" : getPerspectiveLabel(ctx.meetingPerspective);
 
   return (
     <section
       className={`flex h-[54px] w-full min-w-0 select-none items-center gap-2 rounded-xl p-2 ${CARD_SURFACE}`}
-      aria-label="Interview assistant island"
+      aria-label="Meetly assistant island"
     >
       <button
         className={`${SESSION_BUTTON} ${ctx.state === "listening" ? "bg-[#38d879]/20 text-[#38d879]" : ""}`}
-        title={ctx.state === "listening" ? "停止面试监听" : "选择视角并开启会议"}
+        disabled={isActivePhase(dictationState.phase)}
+        title={ctx.state === "listening" ? "结束当前会话" : "开始一次会话"}
         onClick={toggleSession}
       >
         {ctx.state === "listening" ? <MicOff /> : <Mic />}
@@ -291,10 +316,10 @@ function IslandBar({
 
       <button
         className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border-0 bg-white/[0.06] px-2.5 text-[12px] font-medium text-white/72 transition-[background,color,transform] duration-150 hover:bg-white/[0.12] hover:text-white active:scale-[0.98] [&_svg]:h-3.5 [&_svg]:w-3.5"
-        title="切换会议视角"
+        title="会话设置"
         onClick={() => void setPanel("perspective")}
       >
-        {ctx.meetingPerspective === "candidate" ? <Sparkles /> : <PenLine />}
+        {ctx.sessionKind === "meeting" ? <Handshake /> : ctx.meetingPerspective === "candidate" ? <Sparkles /> : <PenLine />}
         <span>{perspectiveLabel}</span>
       </button>
 
@@ -304,7 +329,9 @@ function IslandBar({
       />
 
       <div className="flex h-[38px] min-w-0 flex-1 items-center gap-2.5">
-        {ctx.state === "listening" ? (
+        {dictationState.phase !== "idle" ? (
+          <DictationStatusLabel state={dictationState} />
+        ) : ctx.state === "listening" ? (
           <>
             <AudioBars level={ctx.audioLevel} />
             {ctx.autoAssistHint ? (
@@ -318,6 +345,7 @@ function IslandBar({
               <ListeningStatusButton
                 audioLevel={ctx.audioLevel}
                 latestText={ctx.partialTranscript?.text ?? ctx.latestTranscript?.text ?? null}
+                source={ctx.audioSource}
                 setPanel={setPanel}
                 statusLabel={getListeningStatusLabel({
                   audioLevel: ctx.audioLevel,
@@ -360,68 +388,124 @@ function IslandBar({
 }
 
 function PerspectivePanel({
+  audioSource,
   closePanel,
   contextDocumentMessage,
   contextDocuments,
+  meetingGoal,
   openFilePicker,
   perspective,
   removeContextDocument,
+  sessionKind,
+  setAudioSource,
+  setMeetingGoal,
   setPerspective,
+  setSessionKind,
   startIslandDrag,
   startMeeting,
 }: {
+  audioSource: AudioSource;
   closePanel: () => void;
   contextDocumentMessage: string | null;
   contextDocuments: ReturnType<typeof useMeetlyState>["contextDocuments"];
+  meetingGoal: string;
   openFilePicker: () => void;
   perspective: MeetingPerspective;
   removeContextDocument: (id: string) => void;
+  sessionKind: SessionKind;
+  setAudioSource: (source: AudioSource) => void;
+  setMeetingGoal: (goal: string) => void;
   setPerspective: (perspective: MeetingPerspective) => void;
+  setSessionKind: (kind: SessionKind) => void;
   startIslandDrag: ReturnType<typeof useWindowActions>["startIslandDrag"];
   startMeeting: () => void;
 }) {
   return (
     <section className={`flex h-full w-full flex-col overflow-hidden rounded-xl ${CARD_SURFACE}`}>
       <PanelHeader
-        eyebrow="Start setup"
-        title="选择会议视角"
+        eyebrow="New session"
+        title="开始一次会话"
         closePanel={closePanel}
         startIslandDrag={startIslandDrag}
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <PerspectiveChoice
-            description="适合候选人实时回答问题。建议会以第一人称输出，可以直接照着说或改写。"
+        <div className="grid grid-cols-2 gap-1 rounded-lg bg-white/[0.06] p-1">
+          <SetupSegment
             icon={<Sparkles />}
-            isSelected={perspective === "candidate"}
-            label="我是面试者"
-            onSelect={() => setPerspective("candidate")}
+            isSelected={sessionKind === "interview"}
+            label="面试"
+            onSelect={() => setSessionKind("interview")}
           />
-          <PerspectiveChoice
-            description="适合主持技术面、产品面或行为面。建议会偏向追问、判断信号和下一轮问题。"
-            icon={<PenLine />}
-            isSelected={perspective === "interviewer"}
-            label="我是面试官"
-            onSelect={() => setPerspective("interviewer")}
+          <SetupSegment
+            icon={<Handshake />}
+            isSelected={sessionKind === "meeting"}
+            label="会议"
+            onSelect={() => setSessionKind("meeting")}
           />
         </div>
 
-        <section className="mt-4 rounded-lg border border-white/[0.08] bg-white/[0.045] p-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-white/88">
-            <MonitorUp className="h-4 w-4 text-[#38d879]" />
-            <span>{getPerspectiveLabel(perspective)}视角已就绪</span>
+        {sessionKind === "interview" ? (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <PerspectiveChoice
+              description="建议以第一人称输出，帮助你实时组织回答。"
+              icon={<Sparkles />}
+              isSelected={perspective === "candidate"}
+              label="我是面试者"
+              onSelect={() => setPerspective("candidate")}
+            />
+            <PerspectiveChoice
+              description="主动提示追问、判断信号和下一轮问题。"
+              icon={<PenLine />}
+              isSelected={perspective === "interviewer"}
+              label="我是面试官"
+              onSelect={() => setPerspective("interviewer")}
+            />
           </div>
-          <p className="mt-1.5 mb-0 text-xs leading-relaxed text-white/52">
-            开始后 Meetly 会进入顶部会话面板，持续监听当前会议，并按所选视角组织实时建议。
-          </p>
+        ) : (
+          <label className="mt-4 block">
+            <span className="mb-2 block text-sm font-semibold text-white/86">这次会议想达成什么？</span>
+            <textarea
+              className="min-h-[92px] w-full resize-none rounded-lg border border-white/[0.1] bg-black/[0.16] px-3 py-2.5 text-sm leading-relaxed text-white outline-none placeholder:text-white/28 focus:border-[#38d879]/45"
+              placeholder="例如：确认合作范围，争取本周启动，并明确双方负责人"
+              value={meetingGoal}
+              onChange={(event) => setMeetingGoal(event.target.value)}
+            />
+          </label>
+        )}
+
+        <section className="mt-4">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <span className="text-sm font-semibold text-white/86">声音来自</span>
+            <span className="text-[11px] text-white/38">
+              {audioSource === "microphone" ? "手机请打开扬声器" : "不会占用麦克风"}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <AudioSourceChoice
+              description="现场或手机通话"
+              icon={<Mic />}
+              isSelected={audioSource === "microphone"}
+              label="身边 / 电话"
+              onSelect={() => setAudioSource("microphone")}
+            />
+            <AudioSourceChoice
+              description="飞书、Zoom 等"
+              icon={<MonitorUp />}
+              isSelected={audioSource === "system"}
+              label="电脑会议"
+              onSelect={() => setAudioSource("system")}
+            />
+          </div>
         </section>
 
         <section className="mt-3 rounded-lg border border-dashed border-white/[0.12] bg-black/[0.12] p-3">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-white/82">
               <UploadCloud className="h-4 w-4 shrink-0 text-white/65" />
-              <span className="min-w-0 truncate">拖入{contextDocumentRoleLabel(perspective)}</span>
+              <span className="min-w-0 truncate">
+                拖入{sessionKind === "meeting" ? "会议资料" : contextDocumentRoleLabel(perspective)}
+              </span>
             </div>
             <button
               className="shrink-0 rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-xs text-white/78 transition-colors duration-150 hover:bg-white/[0.12]"
@@ -460,11 +544,70 @@ function PerspectivePanel({
           className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-white/90 px-3 text-[13px] font-medium text-black transition-[background,transform] duration-150 hover:bg-white active:scale-[0.98] [&_svg]:h-4 [&_svg]:w-4"
           onClick={startMeeting}
         >
-          <Mic />
-          <span>以此视角开始</span>
+          {sessionKind === "meeting" ? <Handshake /> : <Sparkles />}
+          <span>开始{sessionKind === "meeting" ? "会议" : "面试"}</span>
         </button>
       </div>
     </section>
+  );
+}
+
+function SetupSegment({
+  icon,
+  isSelected,
+  label,
+  onSelect,
+}: {
+  icon: ReactNode;
+  isSelected: boolean;
+  label: string;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      className={`inline-flex h-9 items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors [&_svg]:h-4 [&_svg]:w-4 ${
+        isSelected ? "bg-white/[0.14] text-white" : "text-white/48 hover:text-white/75"
+      }`}
+      aria-pressed={isSelected}
+      onClick={onSelect}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function AudioSourceChoice({
+  description,
+  icon,
+  isSelected,
+  label,
+  onSelect,
+}: {
+  description: string;
+  icon: ReactNode;
+  isSelected: boolean;
+  label: string;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      className={`flex min-h-[68px] items-center gap-2.5 rounded-lg border px-3 text-left transition-colors ${
+        isSelected
+          ? "border-[#38d879]/45 bg-[#38d879]/10"
+          : "border-white/[0.08] bg-white/[0.035] hover:bg-white/[0.07]"
+      }`}
+      aria-pressed={isSelected}
+      onClick={onSelect}
+    >
+      <span className={`shrink-0 [&_svg]:h-4 [&_svg]:w-4 ${isSelected ? "text-[#7ff0a0]" : "text-white/48"}`}>
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-medium text-white/86">{label}</span>
+        <span className="mt-0.5 block text-[11px] text-white/42">{description}</span>
+      </span>
+    </button>
   );
 }
 
@@ -483,7 +626,7 @@ function PerspectiveChoice({
 }) {
   return (
     <button
-      className={`min-h-[154px] rounded-lg border p-3 text-left transition-[background,border-color,transform] duration-150 active:scale-[0.99] ${
+      className={`min-h-[116px] rounded-lg border p-3 text-left transition-[background,border-color,transform] duration-150 active:scale-[0.99] ${
         isSelected
           ? "border-[#38d879]/45 bg-[#38d879]/12"
           : "border-white/[0.08] bg-white/[0.045] hover:bg-white/[0.075]"
@@ -593,12 +736,14 @@ function AutoAssistChip({
 function ListeningStatusButton({
   audioLevel,
   latestText,
+  source,
   setPanel,
   statusLabel,
   transcriptError,
 }: {
   audioLevel: number;
   latestText: string | null;
+  source: AudioSource;
   setPanel: (panel: "assistant") => Promise<void>;
   statusLabel: string;
   transcriptError: string | null;
@@ -615,7 +760,9 @@ function ListeningStatusButton({
       <p className="m-0 min-w-0 flex-1 truncate text-[13px] text-white/70">
         {transcriptError
           ? `转写失败：${transcriptError}`
-          : latestText ?? (audioLevel > 0.015 ? "正在通过麦克风监听面试/对话" : "正在监听，等待语音")}
+          : latestText ?? (audioLevel > 0.015
+            ? source === "microphone" ? "正在听身边的对话" : "正在听电脑会议"
+            : "正在监听，等待语音")}
       </p>
     </button>
   );
@@ -628,6 +775,72 @@ function IdleStatusLabel() {
       <span className="min-w-0 flex-1 truncate text-[13px] text-white/50">待机</span>
     </div>
   );
+}
+
+function DictationStatusLabel({ state }: { state: DictationViewState }) {
+  const isWorking = ["opening_microphone", "transcribing", "polishing", "pasting"].includes(
+    state.phase
+  );
+  const isRecording = state.phase === "recording";
+  const isSuccess = state.phase === "completed" || state.phase === "copied";
+  const label = getDictationPhaseLabel(state.phase);
+
+  return (
+    <div className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg px-1 text-left">
+      <span
+        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg [&_svg]:h-3.5 [&_svg]:w-3.5 ${
+          isRecording
+            ? "bg-[#ff5c70]/18 text-[#ff8594]"
+            : isSuccess
+              ? "bg-[#38d879]/16 text-[#7ff0a0]"
+              : "bg-white/[0.08] text-white/70"
+        }`}
+      >
+        {isWorking ? <Loader2 className="animate-spin" /> : <Mic />}
+      </span>
+      <span
+        className={`shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+          isRecording
+            ? "bg-[#ff5c70]/14 text-[#ff9ba8]"
+            : isSuccess
+              ? "bg-[#38d879]/12 text-[#7ff0a0]"
+              : "bg-white/[0.07] text-white/65"
+        }`}
+      >
+        {label}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[13px] text-white/62">
+        {state.message ?? "语音输入"}
+      </span>
+    </div>
+  );
+}
+
+function getDictationPhaseLabel(phase: DictationViewState["phase"]) {
+  switch (phase) {
+    case "opening_microphone":
+      return "准备中";
+    case "recording":
+      return "录音中";
+    case "transcribing":
+      return "转写中";
+    case "polishing":
+      return "整理中";
+    case "pasting":
+      return "写入中";
+    case "completed":
+      return "已粘贴";
+    case "copied":
+      return "已复制";
+    case "cancelled":
+      return "已取消";
+    case "blocked":
+      return "暂不可用";
+    case "error":
+      return "失败";
+    default:
+      return "待机";
+  }
 }
 
 function AssistantPanel({
@@ -646,7 +859,9 @@ function AssistantPanel({
       <div className="flex h-14 items-center justify-between border-b border-white/[0.08] bg-white/[0.04] px-3 py-2.5">
         <div className={`min-w-0 flex-1 ${DRAG_CURSOR}`} onMouseDown={startIslandDrag}>
           <p className="m-0 text-[11px] text-white/60">{ctx.state === "listening" ? "监听中" : "待机"}</p>
-          <h1 className="m-0 text-sm leading-tight">面试会话</h1>
+          <h1 className="m-0 text-sm leading-tight">
+            {ctx.sessionKind === "meeting" ? "会议助手" : "面试助手"}
+          </h1>
         </div>
         <button className={GHOST_ICON_BUTTON} title="上传资料" onClick={openFilePicker}>
           <UploadCloud />

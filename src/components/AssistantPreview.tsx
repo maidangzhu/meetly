@@ -1,4 +1,5 @@
 import { Brain, Loader2, MessageCircle, Wrench } from "lucide-react";
+import { useLayoutEffect, useRef, type UIEvent } from "react";
 import { coachTriggerLabel, questionKindLabel } from "../app/interviewLogic";
 import type {
   AssistantSuggestion,
@@ -174,6 +175,13 @@ function CoachCard({
   coachDraft,
   isCoachThinking,
 }: Pick<AssistantPreviewProps, "coachActivity" | "coachMessages" | "coachDraft" | "isCoachThinking">) {
+  const scrollRef = useRef<HTMLUListElement | null>(null);
+  const shouldFollowRef = useRef(true);
+
+  useLayoutEffect(() => {
+    scrollToBottomIfFollowing(scrollRef.current, shouldFollowRef);
+  }, [coachMessages.length, coachDraft?.text, coachDraft?.toolTraces.length]);
+
   return (
     <aside className="flex min-h-0 flex-col rounded-xl border border-white/[0.08] bg-white/[0.05] p-3.5">
       <div className="flex shrink-0 items-center justify-between">
@@ -184,7 +192,12 @@ function CoachCard({
           <Loader2 className="h-3 w-3 animate-spin text-white/40" />
         ) : null}
       </div>
-      <ul className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-auto overscroll-contain pr-1">
+      <ul
+        ref={scrollRef}
+        className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-auto overscroll-contain pr-1"
+        data-testid="coach-scroll"
+        onScroll={(event) => updateFollowState(event, shouldFollowRef)}
+      >
         {coachMessages.length === 0 && !coachDraft && (
           <li className="text-[13px] leading-normal text-white/45">
             开始会话后，关键时刻会给你一句能直接接上的提醒。
@@ -292,6 +305,12 @@ function TranscriptCard({
   "audioLevel" | "isListening" | "partialTranscript" | "transcriptError" | "transcriptHistory"
 >) {
   const status = getTranscriptStatus({ audioLevel, isListening, partialTranscript, transcriptError });
+  const scrollRef = useRef<HTMLUListElement | null>(null);
+  const shouldFollowRef = useRef(true);
+
+  useLayoutEffect(() => {
+    scrollToBottomIfFollowing(scrollRef.current, shouldFollowRef);
+  }, [partialTranscript?.text, transcriptHistory.length]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.05] p-3.5">
@@ -309,7 +328,12 @@ function TranscriptCard({
           {isListening ? "正在监听，开口后会先显示实时字幕。" : "开始监听后，完整说完一句话会在这里出字。"}
         </p>
       ) : (
-        <ul className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-auto overscroll-contain pr-1">
+        <ul
+          ref={scrollRef}
+          className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-auto overscroll-contain pr-1"
+          data-testid="transcript-scroll"
+          onScroll={(event) => updateFollowState(event, shouldFollowRef)}
+        >
           {transcriptHistory.map((segment) => (
             <li key={segment.id} className="rounded-lg bg-black/[0.12] px-2.5 py-2 text-[13px] leading-normal text-white/78">
               {segment.text}
@@ -331,6 +355,22 @@ function TranscriptCard({
       )}
     </div>
   );
+}
+
+function updateFollowState(
+  event: UIEvent<HTMLElement>,
+  shouldFollowRef: { current: boolean }
+) {
+  const element = event.currentTarget;
+  shouldFollowRef.current = element.scrollHeight - element.scrollTop - element.clientHeight <= 40;
+}
+
+function scrollToBottomIfFollowing(
+  element: HTMLElement | null,
+  shouldFollowRef: { current: boolean }
+) {
+  if (!element || !shouldFollowRef.current) return;
+  element.scrollTop = element.scrollHeight;
 }
 
 function getTranscriptStatus({

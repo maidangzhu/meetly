@@ -1,4 +1,10 @@
-import type { ContextDocument, MeetingPerspective, TranscriptSegment } from "../../app/types";
+import type {
+  AudioSource,
+  ContextDocument,
+  MeetingPerspective,
+  SessionKind,
+  TranscriptSegment,
+} from "../../app/types";
 
 const MAX_TRANSCRIPT_AGE_MS = 180_000;
 
@@ -7,12 +13,18 @@ export type ContextSnapshot = {
   recentTranscript: TranscriptSegment[];
   latestSegment: TranscriptSegment | null;
   perspective: MeetingPerspective;
+  sessionKind: SessionKind;
+  audioSource: AudioSource;
+  goal: string;
   sessionId: string | null;
 };
 
 export class ContextStore {
   private documents: ContextDocument[] = [];
   private perspective: MeetingPerspective = "candidate";
+  private sessionKind: SessionKind = "interview";
+  private audioSource: AudioSource = "system";
+  private goal = "";
   private sessionId: string | null = null;
   private segments: TranscriptSegment[] = [];
 
@@ -26,6 +38,12 @@ export class ContextStore {
 
   setPerspective(perspective: MeetingPerspective) {
     this.perspective = perspective;
+  }
+
+  setSessionConfig(config: { kind: SessionKind; audioSource: AudioSource; goal: string }) {
+    this.sessionKind = config.kind;
+    this.audioSource = config.audioSource;
+    this.goal = config.goal.trim();
   }
 
   setSessionId(sessionId: string | null) {
@@ -44,6 +62,9 @@ export class ContextStore {
         documents: this.documents,
         latestSegment: null,
         perspective: this.perspective,
+        sessionKind: this.sessionKind,
+        audioSource: this.audioSource,
+        goal: this.goal,
         recentTranscript: [],
         sessionId: this.sessionId,
       };
@@ -53,6 +74,9 @@ export class ContextStore {
       documents: this.documents,
       latestSegment: latest,
       perspective: this.perspective,
+      sessionKind: this.sessionKind,
+      audioSource: this.audioSource,
+      goal: this.goal,
       recentTranscript: this.segments.filter(
         (segment) => latest.endMs - segment.endMs <= windowMs
       ),

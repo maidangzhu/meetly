@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useRef, useState } from "react";
+import { startMicrophoneClip, type MicrophoneClipSession } from "./app/microphoneClip";
 
 /**
  * Records a microphone clip via the browser's MediaRecorder (getUserMedia),
@@ -17,36 +18,16 @@ export function useMicAsk(onQuestion: (question: string) => void) {
   const [state, setState] = useState<MicAskState>("idle");
   const [error, setError] = useState<string | null>(null);
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const streamRef = useRef<MediaStream | null>(null);
+  const sessionRef = useRef<MicrophoneClipSession | null>(null);
 
   const cleanupStream = useCallback(() => {
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
-    mediaRecorderRef.current = null;
+    sessionRef.current = null;
   }, []);
 
   const startRecording = useCallback(async () => {
     setError(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      chunksRef.current = [];
-
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
-        ? "audio/webm"
-        : "audio/ogg";
-      const recorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = recorder;
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunksRef.current.push(event.data);
-        }
-      };
-
-      recorder.start(100);
+      sessionRef.current = await startMicrophoneClip();
       setState("recording");
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -57,23 +38,16 @@ export function useMicAsk(onQuestion: (question: string) => void) {
   }, [cleanupStream]);
 
   const stopAndAsk = useCallback(async () => {
-    const recorder = mediaRecorderRef.current;
-    if (!recorder || recorder.state !== "recording") {
+    const session = sessionRef.current;
+    if (!session) {
       return;
     }
 
-    const mimeType = recorder.mimeType;
-
-    const stopped = new Promise<void>((resolve) => {
-      recorder.onstop = () => resolve();
-    });
-    recorder.stop();
-    await stopped;
-
-    const chunks = [...chunksRef.current];
+    const blob = await session.stop();
+    const mimeType = session.mimeType;
     cleanupStream();
 
-    if (chunks.length === 0) {
+    if (blob.size === 0) {
       setError("No audio captured.");
       setState("idle");
       return;
@@ -81,7 +55,6 @@ export function useMicAsk(onQuestion: (question: string) => void) {
 
     setState("transcribing");
     try {
-      const blob = new Blob(chunks, { type: mimeType });
       const audioBase64 = await blobToBase64(blob);
 
       const transcription = await invoke<string>("transcribe_audio", {
@@ -107,7 +80,7 @@ export function useMicAsk(onQuestion: (question: string) => void) {
   }, [cleanupStream, onQuestion]);
 
   const cancel = useCallback(() => {
-    mediaRecorderRef.current?.stop();
+    sessionRef.current?.cancel();
     cleanupStream();
     setState("idle");
   }, [cleanupStream]);

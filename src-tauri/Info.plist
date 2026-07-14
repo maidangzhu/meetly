@@ -5,6 +5,6 @@
     <key>NSAudioCaptureUsageDescription</key>
     <string>Meetly needs access to system audio to listen to meeting participants.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Meetly may need microphone access for meeting audio features.</string>
+    <string>Meetly uses the microphone only when you ask a question or start voice dictation.</string>
   </dict>
 </plist>

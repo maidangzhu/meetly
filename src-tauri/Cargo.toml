@@ -19,11 +19,14 @@ base64 = "0.22"
 dirs = "5"
 dotenvy = "0.15"
 futures-util = "0.3"
+handy-keys = "0.3.0"
 hound = "3.5"
 pdf-extract = "0.12"
 reqwest = { version = "0.12", features = ["json", "multipart", "stream"] }
 ringbuf = "0.4"
 tauri = { version = "2", features = ["macos-private-api"] }
+tauri-plugin-clipboard-manager = "2.3.2"
+tauri-plugin-global-shortcut = "2.3.1"
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -35,4 +38,6 @@ tauri-plugin-process = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cidre = "0.11"
+enigo = "0.6.1"
+objc2-app-kit = "0.3.2"
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2" }

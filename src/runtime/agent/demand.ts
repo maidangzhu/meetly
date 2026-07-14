@@ -1,4 +1,4 @@
-import type { TranscriptSegment } from "../../app/types";
+import type { SessionKind, TranscriptSegment } from "../../app/types";
 import { createSttQuestionWake, createSttSignalWake, type WakeEvent } from "./wake";
 
 const CHINESE_QUESTION_KEYWORDS = [
@@ -29,7 +29,10 @@ const ENGLISH_QUESTION_KEYWORDS = [
   "describe",
 ];
 
-export function detectSttWake(segment: TranscriptSegment): WakeEvent | null {
+export function detectSttWake(
+  segment: TranscriptSegment,
+  sessionKind: SessionKind = "interview"
+): WakeEvent | null {
   const text = segment.text.trim();
   if (!text) return null;
 
@@ -44,6 +47,13 @@ export function detectSttWake(segment: TranscriptSegment): WakeEvent | null {
     return createSttQuestionWake(text);
   }
 
+  if (sessionKind === "meeting") {
+    const negotiationSignal = detectMeetingSignal(text);
+    if (negotiationSignal) {
+      return createSttSignalWake(text, negotiationSignal);
+    }
+  }
+
   if (needsExternalContext(text)) {
     return createSttSignalWake(text, "external_context_needed");
   }
@@ -53,6 +63,19 @@ export function detectSttWake(segment: TranscriptSegment): WakeEvent | null {
   }
 
   return null;
+}
+
+function detectMeetingSignal(text: string) {
+  const signals: Array<[RegExp, string]> = [
+    [/(价格|费用|预算|报价|折扣|成本|付款|合同|price|budget|cost|discount|payment|contract)/i, "meeting_commercial_terms"],
+    [/(时间|日期|本周|下周|月底|上线|交付|周期|deadline|timeline|deliver|launch)/i, "meeting_timeline_commitment"],
+    [/(范围|边界|包含|不包含|负责|责任|谁来|scope|responsib|owner|ownership)/i, "meeting_scope_or_ownership"],
+    [/(但是|不过|担心|顾虑|风险|问题是|很难|不行|不能接受|objection|concern|risk|cannot|can't)/i, "meeting_objection"],
+    [/(可以考虑|可以接受|没问题|同意|让步|折中|那就|agree|acceptable|concession|compromise)/i, "meeting_concession_or_agreement"],
+    [/(下一步|后续|确认一下|结论|决定|拍板|follow.?up|next step|decision|confirm)/i, "meeting_closing_window"],
+  ];
+
+  return signals.find(([pattern]) => pattern.test(text))?.[1] ?? null;
 }
 
 function needsExternalContext(text: string) {

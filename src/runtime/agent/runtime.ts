@@ -10,6 +10,7 @@ const RECENT_EVIDENCE_TTL_MS = 60_000;
 
 export type AgentRuntimeCallbacks = {
   onDelta?: (delta: string, wake: WakeEvent) => void;
+  onRetry?: (attempt: number, reason: string, wake: WakeEvent) => void;
   onWakeStart?: (wake: WakeEvent) => void;
   onWakeSkipped?: (wake: WakeEvent, reason: string) => void;
   onMessage: (suggestion: AssistantSuggestion, wake: WakeEvent) => void;
@@ -72,6 +73,7 @@ export class AgentRuntime {
           const prompt = buildAgentPrompt(wake, snapshot);
           const suggestion = await this.transport.complete(prompt, {
             onDelta: (delta) => this.callbacks.onDelta?.(delta, wake),
+            onRetry: (attempt, reason) => this.callbacks.onRetry?.(attempt, reason, wake),
             onToolEnd: (name, isError) => this.callbacks.onToolEnd?.(name, isError, wake),
             onToolStart: (name) => this.callbacks.onToolStart?.(name, wake),
             onToolTrace: (trace) => this.callbacks.onToolTrace?.(trace, wake),

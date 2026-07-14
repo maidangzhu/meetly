@@ -6,8 +6,8 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
-pub use openai_compatible::OpenAiCompatibleLlm;
 pub(crate) use openai_compatible::parse_suggestion;
+pub use openai_compatible::OpenAiCompatibleLlm;
 
 /// Structured suggestion returned by the assistant. Matches the schema in
 /// docs/TECHNICAL_DESIGN.md section 4.6, minus the `risk` field (dropped;

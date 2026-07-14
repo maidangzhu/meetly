@@ -120,7 +120,12 @@ fn normalize_exa_result(result: ExaResult) -> Option<WebFetchItem> {
         .snippet
         .or(result.description)
         .or(result.summary)
-        .or_else(|| result.highlights.into_iter().find(|item| !item.trim().is_empty()))
+        .or_else(|| {
+            result
+                .highlights
+                .into_iter()
+                .find(|item| !item.trim().is_empty())
+        })
         .or(result.text)
         .map(|text| truncate_chars(&text.replace('\n', " "), 700));
 

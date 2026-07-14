@@ -1,0 +1,43 @@
+#[derive(Debug, Clone)]
+pub struct TargetSnapshot {
+    pub pid: i32,
+    pub app_name: Option<String>,
+}
+
+#[cfg(target_os = "macos")]
+pub fn capture() -> Option<TargetSnapshot> {
+    use objc2_app_kit::NSWorkspace;
+
+    let workspace = NSWorkspace::sharedWorkspace();
+    let app = workspace.frontmostApplication()?;
+    let pid = app.processIdentifier();
+    let app_name = app.localizedName().map(|name| name.to_string());
+    Some(TargetSnapshot { pid, app_name })
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn capture() -> Option<TargetSnapshot> {
+    None
+}
+
+#[cfg(target_os = "macos")]
+pub fn activate(target: &TargetSnapshot) -> bool {
+    use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication};
+
+    let Some(app) = NSRunningApplication::runningApplicationWithProcessIdentifier(target.pid)
+    else {
+        return false;
+    };
+    if app.isTerminated() {
+        return false;
+    }
+    if app.isActive() {
+        return true;
+    }
+    app.activateWithOptions(NSApplicationActivationOptions::ActivateAllWindows)
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn activate(_target: &TargetSnapshot) -> bool {
+    false
+}

@@ -84,7 +84,10 @@ pub async fn generate_interview_report(
     })
 }
 
-async fn generate_review(app: &AppHandle, request: &InterviewReportRequest) -> Result<String, String> {
+async fn generate_review(
+    app: &AppHandle,
+    request: &InterviewReportRequest,
+) -> Result<String, String> {
     let credentials = crate::providers::credentials::resolve(app, ProviderKind::Llm)
         .map_err(|error| error.to_string())?;
     let prompt = build_review_prompt(request);

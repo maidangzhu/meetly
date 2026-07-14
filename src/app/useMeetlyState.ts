@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import type {
   AssistantMode,
   AssistantSuggestion,
+  AudioSource,
   AutoAssistHint,
   CoachActivity,
   CoachMessage,
@@ -15,6 +16,7 @@ import type {
   PrefetchInFlight,
   PrefetchStatus,
   QuestionCandidate,
+  SessionKind,
   PartialTranscript,
   TranscriptSegment,
 } from "./types";
@@ -32,6 +34,9 @@ export function useMeetlyState() {
   const [transcriptError, setTranscriptError] = useState<string | null>(null);
   const [assistantMode, setAssistantMode] = useState<AssistantMode>("interview");
   const [meetingPerspective, setMeetingPerspective] = useState<MeetingPerspective>("candidate");
+  const [sessionKind, setSessionKind] = useState<SessionKind>("interview");
+  const [audioSource, setAudioSource] = useState<AudioSource>("system");
+  const [meetingGoal, setMeetingGoal] = useState("");
   const [contextDocuments, setContextDocuments] = useState<ContextDocument[]>([]);
   const [contextDocumentMessage, setContextDocumentMessage] = useState<string | null>(null);
   const [assistantSuggestion, setAssistantSuggestion] = useState<AssistantSuggestion | null>(null);
@@ -102,6 +107,12 @@ export function useMeetlyState() {
     setAssistantMode,
     meetingPerspective,
     setMeetingPerspective,
+    sessionKind,
+    setSessionKind,
+    audioSource,
+    setAudioSource,
+    meetingGoal,
+    setMeetingGoal,
     contextDocuments,
     setContextDocuments,
     contextDocumentMessage,

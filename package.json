@@ -10,6 +10,7 @@
     "test:flow": "node scripts/simulate-interview-flow.mjs",
     "test:wake": "tsx scripts/replay-coach-wake-policy.ts",
     "test:coach-log": "tsx scripts/replay-latest-coach-log.ts",
+    "test:dictation": "tsx scripts/test-dictation-state.ts",
     "tauri": "tauri"
   },
   "dependencies": {

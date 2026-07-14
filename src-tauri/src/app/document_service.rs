@@ -9,9 +9,9 @@ pub async fn extract_pdf_text(file_name: String, data_base64: String) -> Result<
         .map(|(_, data)| data)
         .unwrap_or(&data_base64);
 
-    let bytes = BASE64.decode(stripped).map_err(|error| {
-        format!("Failed to decode PDF data for {file_name}: {error}")
-    })?;
+    let bytes = BASE64
+        .decode(stripped)
+        .map_err(|error| format!("Failed to decode PDF data for {file_name}: {error}"))?;
 
     if bytes.len() > MAX_PDF_BYTES {
         return Err(format!(
