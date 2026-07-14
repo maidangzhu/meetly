@@ -4,7 +4,9 @@ import {
   INITIAL_DICTATION_STATE,
 } from "../src/app/dictation/dictationReducer";
 import { chooseDictationOutput } from "../src/app/dictation/output";
+import { DEFAULT_DICTATION_SETTINGS } from "../src/app/dictation/types";
 
+assert.equal(DEFAULT_DICTATION_SETTINGS.activationMode, "toggle");
 assert.equal(chooseDictationOutput("raw transcript", "polished transcript"), "polished transcript");
 assert.equal(chooseDictationOutput("raw transcript", "   "), "raw transcript");
 assert.equal(chooseDictationOutput("raw transcript"), "raw transcript");

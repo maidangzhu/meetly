@@ -1,4 +1,4 @@
-use super::{settings::ActivationMode, DictationState};
+use super::DictationState;
 use handy_keys::{Hotkey, HotkeyManager, HotkeyState};
 use std::{
     sync::mpsc,
@@ -76,12 +76,7 @@ pub fn restart(app: &AppHandle, state: &DictationState) {
         return;
     }
 
-    match start_native(
-        app,
-        state,
-        &settings.shortcut,
-        settings.activation_mode.clone(),
-    ) {
+    match start_native(app, state, &settings.shortcut) {
         Ok(runtime) => {
             tracing::info!(shortcut = %settings.shortcut, "dictation native shortcut registered");
             state.set_shortcut_status("native", None);
@@ -89,39 +84,32 @@ pub fn restart(app: &AppHandle, state: &DictationState) {
                 *current = Some(runtime);
             }
         }
-        Err(native_error) => {
-            match start_fallback(
-                app,
-                state,
-                &settings.fallback_shortcut,
-                settings.activation_mode,
-            ) {
-                Ok(runtime) => {
-                    tracing::warn!(
-                        shortcut = %settings.fallback_shortcut,
-                        native_error = %native_error,
-                        "dictation using fallback shortcut"
-                    );
-                    state.set_shortcut_status("fallback", Some(native_error));
-                    if let Ok(mut current) = state.shortcut_runtime.lock() {
-                        *current = Some(runtime);
-                    }
-                }
-                Err(fallback_error) => {
-                    tracing::error!(
-                        native_error = %native_error,
-                        fallback_error = %fallback_error,
-                        "dictation shortcut unavailable"
-                    );
-                    state.set_shortcut_status(
-                        "unavailable",
-                        Some(format!(
-                            "Native shortcut failed: {native_error}. Fallback failed: {fallback_error}"
-                        )),
-                    );
+        Err(native_error) => match start_fallback(app, state, &settings.fallback_shortcut) {
+            Ok(runtime) => {
+                tracing::warn!(
+                    shortcut = %settings.fallback_shortcut,
+                    native_error = %native_error,
+                    "dictation using fallback shortcut"
+                );
+                state.set_shortcut_status("fallback", Some(native_error));
+                if let Ok(mut current) = state.shortcut_runtime.lock() {
+                    *current = Some(runtime);
                 }
             }
-        }
+            Err(fallback_error) => {
+                tracing::error!(
+                    native_error = %native_error,
+                    fallback_error = %fallback_error,
+                    "dictation shortcut unavailable"
+                );
+                state.set_shortcut_status(
+                    "unavailable",
+                    Some(format!(
+                        "Native shortcut failed: {native_error}. Fallback failed: {fallback_error}"
+                    )),
+                );
+            }
+        },
     }
 }
 
@@ -129,7 +117,6 @@ fn start_native(
     app: &AppHandle,
     _state: &DictationState,
     shortcut: &str,
-    activation_mode: ActivationMode,
 ) -> Result<ShortcutRuntime, String> {
     let hotkey: Hotkey = shortcut
         .parse()
@@ -151,7 +138,7 @@ fn start_native(
             while let Some(event) = manager.try_recv() {
                 let pressed = event.state == HotkeyState::Pressed;
                 if let Some(pressed) = edges.accept(pressed) {
-                    super::handle_shortcut_event(&app, pressed, &activation_mode);
+                    super::handle_shortcut_event(&app, pressed);
                 }
             }
             thread::sleep(Duration::from_millis(8));
@@ -164,7 +151,6 @@ fn start_fallback(
     app: &AppHandle,
     _state: &DictationState,
     shortcut: &str,
-    activation_mode: ActivationMode,
 ) -> Result<ShortcutRuntime, String> {
     let shortcut_owned = shortcut.to_string();
     let edges = std::sync::Mutex::new(ShortcutEdgeFilter::default());
@@ -173,7 +159,7 @@ fn start_fallback(
             let pressed = event.state == ShortcutState::Pressed;
             if let Ok(mut edges) = edges.lock() {
                 if let Some(pressed) = edges.accept(pressed) {
-                    super::handle_shortcut_event(app, pressed, &activation_mode);
+                    super::handle_shortcut_event(app, pressed);
                 }
             }
         })

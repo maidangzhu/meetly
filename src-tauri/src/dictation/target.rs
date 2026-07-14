@@ -21,7 +21,22 @@ pub fn capture() -> Option<TargetSnapshot> {
 }
 
 #[cfg(target_os = "macos")]
-pub fn activate(target: &TargetSnapshot) -> bool {
+pub async fn activate(app: &tauri::AppHandle, target: &TargetSnapshot) -> bool {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let target = target.clone();
+    if app
+        .run_on_main_thread(move || {
+            let _ = tx.send(activate_on_main_thread(&target));
+        })
+        .is_err()
+    {
+        return false;
+    }
+    rx.await.unwrap_or(false)
+}
+
+#[cfg(target_os = "macos")]
+fn activate_on_main_thread(target: &TargetSnapshot) -> bool {
     use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication};
 
     let Some(app) = NSRunningApplication::runningApplicationWithProcessIdentifier(target.pid)
@@ -38,6 +53,6 @@ pub fn activate(target: &TargetSnapshot) -> bool {
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn activate(_target: &TargetSnapshot) -> bool {
+pub async fn activate(_app: &tauri::AppHandle, _target: &TargetSnapshot) -> bool {
     false
 }

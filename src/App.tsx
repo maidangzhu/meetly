@@ -32,7 +32,6 @@ import {
 import { questionKindLabel } from "./app/interviewLogic";
 import { safeInvoke } from "./app/platform";
 import type { AudioSource, MeetingPerspective, SessionKind } from "./app/types";
-import { isActivePhase } from "./app/dictation/dictationReducer";
 import type { DictationViewState } from "./app/dictation/types";
 import { useDictation } from "./app/dictation/useDictation";
 import { useAgentRuntime } from "./app/useAgentRuntime";
@@ -59,6 +58,23 @@ export function App() {
   const dictation = useDictation();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const previewPhase = import.meta.env.DEV
+    ? new URLSearchParams(window.location.search).get("dictation")
+    : null;
+  const dictationState: DictationViewState = previewPhase
+    ? {
+        runId: "dictation-preview",
+        phase: previewPhase as DictationViewState["phase"],
+        message: previewPhase === "recording" ? "松开即可转写" : "正在转写",
+        rawText: null,
+        finalText: null,
+      }
+    : dictation.state;
+  const dictationVisible = dictationState.phase !== "idle";
+
+  useEffect(() => {
+    void safeInvoke("set_dictation_overlay_mode", { enabled: dictationVisible });
+  }, [dictationVisible]);
 
   useTauriEvents(ctx, autoAssist, session);
 
@@ -134,6 +150,21 @@ export function App() {
     event.target.value = "";
     await processContextFiles(files);
   };
+
+  if (dictationVisible) {
+    return (
+      <main className="flex h-screen w-screen items-start justify-center overflow-hidden bg-transparent">
+        <div className="relative h-full w-full p-2.5">
+          <DictationBubble
+            state={dictationState}
+            audioLevel={previewPhase ? 0.68 : dictation.audioLevel}
+            cancel={dictation.cancel}
+            finishRecording={dictation.finishRecording}
+          />
+        </div>
+      </main>
+    );
+  }
 
   if (ctx.isHidden) {
     return (
@@ -236,7 +267,6 @@ export function App() {
               contextDocuments={ctx.contextDocuments}
               ctx={ctx}
               dismissAutoAssistHint={session.dismissAutoAssistHint}
-              dictationState={dictation.state}
               setPanel={windowActions.setPanel}
               startIslandDrag={windowActions.startIslandDrag}
               toggleSession={toggleSession}
@@ -258,13 +288,116 @@ export function App() {
   );
 }
 
+function DictationBubble({
+  state,
+  audioLevel,
+  cancel,
+  finishRecording,
+}: {
+  state: DictationViewState;
+  audioLevel: number;
+  cancel: () => void;
+  finishRecording: () => void;
+}) {
+  const isThinking = ["transcribing", "polishing", "pasting"].includes(state.phase);
+  const isTerminal = ["completed", "copied", "cancelled", "error", "blocked"].includes(
+    state.phase
+  );
+  const isSuccess = state.phase === "completed" || state.phase === "copied";
+
+  if (isThinking) {
+    return (
+      <section
+        className="flex h-[54px] w-full select-none items-center justify-center rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.94)] px-4 shadow-[0_12px_32px_rgb(0_0_0_/_0.42)] backdrop-blur-2xl"
+        aria-label="正在处理语音输入"
+        aria-live="polite"
+      >
+        <span className="text-[13px] font-medium text-white/72">Thinking...</span>
+      </section>
+    );
+  }
+
+  if (isTerminal) {
+    return (
+      <section
+        className="flex h-[54px] w-full select-none items-center justify-center gap-2 rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.94)] px-4 shadow-[0_12px_32px_rgb(0_0_0_/_0.42)] backdrop-blur-2xl"
+        aria-label="语音输入结果"
+        aria-live="polite"
+      >
+        {isSuccess && <Check className="h-4 w-4 text-[#64e594]" />}
+        <span className="max-w-[220px] truncate text-[13px] font-medium text-white/72">
+          {getDictationPhaseLabel(state.phase)}
+        </span>
+      </section>
+    );
+  }
+
+  return (
+    <section
+      className="flex h-[54px] w-full select-none items-center gap-2 rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.94)] p-2 shadow-[0_12px_32px_rgb(0_0_0_/_0.42)] backdrop-blur-2xl"
+      aria-label="语音输入"
+    >
+      <button
+        type="button"
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-0 bg-white/[0.07] text-white/55 transition-colors hover:bg-[#ff5c70]/18 hover:text-[#ff8c99] disabled:opacity-35 [&_svg]:h-4 [&_svg]:w-4"
+        title="取消语音输入"
+        aria-label="取消语音输入"
+        disabled={isTerminal}
+        onClick={cancel}
+      >
+        <X />
+      </button>
+
+      <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5" aria-live="polite">
+        {state.phase === "recording" ? (
+          <DictationWaveform level={audioLevel} />
+        ) : (
+          <span className="text-[12px] font-medium text-white/72">准备录音</span>
+        )}
+        <span className="max-w-[170px] truncate text-[10px] text-white/38">
+          {state.phase === "recording" ? "再次按 Fn + 空格即可转写" : state.message}
+        </span>
+      </div>
+
+      <button
+        type="button"
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-0 bg-[#38d879] text-[#072d17] shadow-[0_0_0_1px_rgb(255_255_255_/_0.08)] transition-[background,transform,opacity] hover:bg-[#55e58d] active:scale-95 disabled:bg-white/[0.08] disabled:text-white/30 [&_svg]:h-4 [&_svg]:w-4"
+        title="完成录音"
+        aria-label="完成录音"
+        onClick={finishRecording}
+      >
+        <Check />
+      </button>
+    </section>
+  );
+}
+
+function DictationWaveform({ level }: { level: number }) {
+  const normalized = Math.max(0.04, Math.min(1, level));
+  const shape = [0.32, 0.48, 0.7, 0.92, 0.58, 0.78, 1, 0.66, 0.88, 0.54, 0.74, 0.46, 0.62, 0.38, 0.52];
+
+  return (
+    <div className="flex h-6 w-[132px] items-center justify-center gap-[3px] overflow-hidden" aria-hidden="true">
+      {shape.map((weight, index) => (
+        <span
+          key={index}
+          className="w-[3px] rounded-full bg-white/80 transition-[height,opacity] duration-75"
+          style={{
+            height: `${3 + normalized * weight * 20}px`,
+            opacity: 0.42 + normalized * 0.55,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function IslandBar({
   askAssistant,
   contextDocumentMessage,
   contextDocuments,
   ctx,
   dismissAutoAssistHint,
-  dictationState,
   setPanel,
   startIslandDrag,
   toggleSession,
@@ -275,7 +408,6 @@ function IslandBar({
   contextDocuments: ReturnType<typeof useMeetlyState>["contextDocuments"];
   ctx: ReturnType<typeof useMeetlyState>;
   dismissAutoAssistHint: () => void;
-  dictationState: DictationViewState;
   setPanel: ReturnType<typeof useWindowActions>["setPanel"];
   startIslandDrag: ReturnType<typeof useWindowActions>["startIslandDrag"];
   toggleSession: () => void;
@@ -290,7 +422,6 @@ function IslandBar({
     >
       <button
         className={`${SESSION_BUTTON} ${ctx.state === "listening" ? "bg-[#38d879]/20 text-[#38d879]" : ""}`}
-        disabled={isActivePhase(dictationState.phase)}
         title={ctx.state === "listening" ? "结束当前会话" : "开始一次会话"}
         onClick={toggleSession}
       >
@@ -329,9 +460,7 @@ function IslandBar({
       />
 
       <div className="flex h-[38px] min-w-0 flex-1 items-center gap-2.5">
-        {dictationState.phase !== "idle" ? (
-          <DictationStatusLabel state={dictationState} />
-        ) : ctx.state === "listening" ? (
+        {ctx.state === "listening" ? (
           <>
             <AudioBars level={ctx.audioLevel} />
             {ctx.autoAssistHint ? (
@@ -773,45 +902,6 @@ function IdleStatusLabel() {
     <div className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg px-1 text-left">
       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-white/35" />
       <span className="min-w-0 flex-1 truncate text-[13px] text-white/50">待机</span>
-    </div>
-  );
-}
-
-function DictationStatusLabel({ state }: { state: DictationViewState }) {
-  const isWorking = ["opening_microphone", "transcribing", "polishing", "pasting"].includes(
-    state.phase
-  );
-  const isRecording = state.phase === "recording";
-  const isSuccess = state.phase === "completed" || state.phase === "copied";
-  const label = getDictationPhaseLabel(state.phase);
-
-  return (
-    <div className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg px-1 text-left">
-      <span
-        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg [&_svg]:h-3.5 [&_svg]:w-3.5 ${
-          isRecording
-            ? "bg-[#ff5c70]/18 text-[#ff8594]"
-            : isSuccess
-              ? "bg-[#38d879]/16 text-[#7ff0a0]"
-              : "bg-white/[0.08] text-white/70"
-        }`}
-      >
-        {isWorking ? <Loader2 className="animate-spin" /> : <Mic />}
-      </span>
-      <span
-        className={`shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
-          isRecording
-            ? "bg-[#ff5c70]/14 text-[#ff9ba8]"
-            : isSuccess
-              ? "bg-[#38d879]/12 text-[#7ff0a0]"
-              : "bg-white/[0.07] text-white/65"
-        }`}
-      >
-        {label}
-      </span>
-      <span className="min-w-0 flex-1 truncate text-[13px] text-white/62">
-        {state.message ?? "语音输入"}
-      </span>
     </div>
   );
 }

@@ -1,11 +1,25 @@
-use std::time::Duration;
-use tauri::{App, Manager, PhysicalPosition, Position, WebviewWindow};
+use std::{sync::Mutex, time::Duration};
+use tauri::{App, Manager, PhysicalPosition, PhysicalSize, Position, State, WebviewWindow};
 
 const COLLAPSED_WIDTH: f64 = 600.0;
 const EXPANDED_WIDTH: f64 = 920.0;
 const COLLAPSED_HEIGHT: f64 = 54.0;
 const OUTER_GUTTER: f64 = 10.0;
 const TOP_OFFSET: i32 = 54;
+const DICTATION_WINDOW_WIDTH: f64 = 320.0;
+const DICTATION_WINDOW_HEIGHT: f64 = 74.0;
+const DICTATION_BOTTOM_OFFSET: f64 = 56.0;
+
+#[derive(Debug, Clone)]
+struct WindowSnapshot {
+    position: PhysicalPosition<i32>,
+    size: PhysicalSize<u32>,
+}
+
+#[derive(Default)]
+pub struct DictationOverlayState {
+    snapshot: Mutex<Option<WindowSnapshot>>,
+}
 
 #[tauri::command]
 pub fn set_island_height(window: WebviewWindow, height: u32) -> Result<(), String> {
@@ -19,6 +33,65 @@ pub fn set_island_height(window: WebviewWindow, height: u32) -> Result<(), Strin
         height as f64 + OUTER_GUTTER * 2.0,
     );
     resize_preserving_position(&window, size).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_dictation_overlay_mode(
+    window: WebviewWindow,
+    state: State<DictationOverlayState>,
+    enabled: bool,
+) -> Result<(), String> {
+    let mut snapshot = state
+        .snapshot
+        .lock()
+        .map_err(|error| format!("Failed to lock Dictation window state: {error}"))?;
+
+    if enabled {
+        if snapshot.is_some() {
+            return Ok(());
+        }
+        *snapshot = Some(WindowSnapshot {
+            position: window.outer_position().map_err(|error| error.to_string())?,
+            size: window.outer_size().map_err(|error| error.to_string())?,
+        });
+        window
+            .set_min_size(None::<tauri::LogicalSize<f64>>)
+            .map_err(|error| error.to_string())?;
+        window
+            .set_min_size(Some(tauri::LogicalSize::new(
+                DICTATION_WINDOW_WIDTH,
+                DICTATION_WINDOW_HEIGHT,
+            )))
+            .map_err(|error| error.to_string())?;
+        window
+            .set_size(tauri::LogicalSize::new(
+                DICTATION_WINDOW_WIDTH,
+                DICTATION_WINDOW_HEIGHT,
+            ))
+            .map_err(|error| error.to_string())?;
+        position_bottom_center(&window)?;
+        return Ok(());
+    }
+
+    let Some(previous) = snapshot.take() else {
+        return Ok(());
+    };
+    window
+        .set_min_size(None::<tauri::LogicalSize<f64>>)
+        .map_err(|error| error.to_string())?;
+    window
+        .set_size(previous.size)
+        .map_err(|error| error.to_string())?;
+    window
+        .set_position(Position::Physical(previous.position))
+        .map_err(|error| error.to_string())?;
+    window
+        .set_min_size(Some(tauri::LogicalSize::new(
+            COLLAPSED_WIDTH,
+            COLLAPSED_HEIGHT,
+        )))
+        .map_err(|error| error.to_string())?;
     Ok(())
 }
 
@@ -105,6 +178,50 @@ fn position_top_center(window: &WebviewWindow) -> tauri::Result<()> {
     }
 
     Ok(())
+}
+
+fn position_bottom_center(window: &WebviewWindow) -> Result<(), String> {
+    let Some(monitor) = window
+        .current_monitor()
+        .map_err(|error| error.to_string())?
+        .or(window
+            .primary_monitor()
+            .map_err(|error| error.to_string())?)
+    else {
+        return Ok(());
+    };
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    let monitor_position = monitor.position();
+    let monitor_size = monitor.size();
+    let window_width = (DICTATION_WINDOW_WIDTH * scale).round() as i32;
+    let window_height = (DICTATION_WINDOW_HEIGHT * scale).round() as i32;
+    let (x, y) = bottom_center_coordinates(
+        monitor_position.x,
+        monitor_position.y,
+        monitor_size.width as i32,
+        monitor_size.height as i32,
+        window_width,
+        window_height,
+        (DICTATION_BOTTOM_OFFSET * scale).round() as i32,
+    );
+    window
+        .set_position(Position::Physical(PhysicalPosition::new(x, y)))
+        .map_err(|error| error.to_string())
+}
+
+fn bottom_center_coordinates(
+    monitor_x: i32,
+    monitor_y: i32,
+    monitor_width: i32,
+    monitor_height: i32,
+    window_width: i32,
+    window_height: i32,
+    bottom_offset: i32,
+) -> (i32, i32) {
+    (
+        monitor_x + (monitor_width - window_width) / 2,
+        monitor_y + monitor_height - window_height - bottom_offset,
+    )
 }
 
 fn resize_preserving_position(
@@ -228,4 +345,25 @@ fn setup_macos_panel(window: &WebviewWindow) {
 
     delegate.set_listener(Box::new(move |_delegate_name: String| {}));
     panel.set_delegate(delegate);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bottom_center_coordinates;
+
+    #[test]
+    fn dictation_overlay_is_centered_near_monitor_bottom() {
+        assert_eq!(
+            bottom_center_coordinates(0, 0, 1512, 982, 320, 74, 56),
+            (596, 852)
+        );
+    }
+
+    #[test]
+    fn dictation_overlay_respects_monitor_origin() {
+        assert_eq!(
+            bottom_center_coordinates(-1920, -120, 1920, 1080, 320, 74, 56),
+            (-1120, 830)
+        );
+    }
 }

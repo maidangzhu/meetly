@@ -1,4 +1,4 @@
-export type DictationActivationMode = "push_to_talk" | "toggle";
+export type DictationActivationMode = "toggle";
 
 export type DictationSettings = {
   enabled: boolean;
@@ -65,7 +65,7 @@ export const DEFAULT_DICTATION_SETTINGS: DictationSettings = {
   enabled: true,
   shortcut: "Fn+Space",
   fallbackShortcut: "Alt+Space",
-  activationMode: "push_to_talk",
+  activationMode: "toggle",
   aiPolishEnabled: true,
   autoPasteEnabled: true,
   keepResultInClipboard: true,

@@ -1142,27 +1142,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
 
 [[package]]
-name = "enigo"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71c6c56e50f7acae2906a0dcbb34529ca647e40421119ad5d12e7f8ba6e50010"
-dependencies = [
- "core-foundation 0.10.1",
- "core-graphics 0.25.0",
- "foreign-types-shared 0.3.1",
- "libc",
- "log",
- "nom",
- "objc2",
- "objc2-app-kit",
- "objc2-foundation",
- "windows 0.61.3",
- "x11rb",
- "xkbcommon",
- "xkeysym",
-]
-
-[[package]]
 name = "enumflags2"
 version = "0.7.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2565,9 +2544,9 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "cidre",
+ "core-graphics 0.25.0",
  "dirs 5.0.1",
  "dotenvy",
- "enigo",
  "futures-util",
  "handy-keys",
  "hound",
@@ -2595,15 +2574,6 @@ name = "memchr"
 version = "2.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4"
-
-[[package]]
-name = "memmap2"
-version = "0.9.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1219ed1b7f229ee7104d281dd01d6802fe28bb6e95d292942c4daacdeb798c0"
-dependencies = [
- "libc",
-]
 
 [[package]]
 name = "memoffset"
@@ -6596,17 +6566,6 @@ checksum = "32e45ad4206f6d2479085147f02bc2ef834ac85886624a23575ae137c8aa8156"
 dependencies = [
  "libc",
  "rustix",
-]
-
-[[package]]
-name = "xkbcommon"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7a974f48060a14e95705c01f24ad9c3345022f4d97441b8a36beb7ed5c4a02d"
-dependencies = [
- "libc",
- "memmap2",
- "xkeysym",
 ]
 
 [[package]]

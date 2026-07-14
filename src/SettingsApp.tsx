@@ -321,7 +321,7 @@ function DictationSection() {
     <section className="mb-6 rounded-xl border border-white/[0.08] bg-white/[0.04] p-4">
       <h2 className="m-0 text-sm font-semibold">Voice dictation</h2>
       <p className="mt-1 mb-4 text-xs leading-relaxed text-white/50">
-        Hold the shortcut, speak, then release. Meetly transcribes, polishes, and pastes into the original app.
+        Press once to record, then press again to transcribe. Press Escape to cancel.
       </p>
 
       <label className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-white/[0.08] bg-white/[0.04] p-3 text-sm">
@@ -356,23 +356,6 @@ function DictationSection() {
           />
         </label>
       </div>
-
-      <label className="mb-3 block">
-        <span className={LABEL}>Activation mode</span>
-        <select
-          className={FIELD}
-          value={settings.activationMode}
-          onChange={(event) =>
-            setSettings((current) => ({
-              ...current,
-              activationMode: event.target.value as DictationSettings["activationMode"],
-            }))
-          }
-        >
-          <option value="push_to_talk">Hold to talk</option>
-          <option value="toggle">Press once to start / again to stop</option>
-        </select>
-      </label>
 
       <div className="mb-4 grid grid-cols-1 gap-2">
         <DictationToggle

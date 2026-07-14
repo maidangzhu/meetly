@@ -91,6 +91,13 @@ impl DictationState {
         active.take();
         true
     }
+
+    fn is_active(&self, run_id: &str) -> bool {
+        self.active
+            .lock()
+            .map(|active| active.as_ref().map(|run| run.id.as_str()) == Some(run_id))
+            .unwrap_or(false)
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -155,35 +162,20 @@ pub fn initialize(app: &AppHandle) {
     shortcut::restart(app, &state);
 }
 
-pub(crate) fn handle_shortcut_event(
-    app: &AppHandle,
-    pressed: bool,
-    activation_mode: &ActivationMode,
-) {
-    match activation_mode {
-        ActivationMode::PushToTalk => {
-            if pressed {
-                begin_run(app);
-            } else {
-                release_run(app);
-            }
-        }
-        ActivationMode::Toggle => {
-            if !pressed {
-                return;
-            }
-            let state = app.state::<DictationState>();
-            let active = state
-                .active
-                .lock()
-                .map(|run| run.is_some())
-                .unwrap_or(false);
-            if active {
-                release_run(app);
-            } else {
-                begin_run(app);
-            }
-        }
+pub(crate) fn handle_shortcut_event(app: &AppHandle, pressed: bool) {
+    if !pressed {
+        return;
+    }
+    let state = app.state::<DictationState>();
+    let active = state
+        .active
+        .lock()
+        .map(|run| run.is_some())
+        .unwrap_or(false);
+    if active {
+        release_run(app);
+    } else {
+        begin_run(app);
     }
 }
 
@@ -311,12 +303,13 @@ pub fn get_dictation_status(state: tauri::State<DictationState>) -> DictationSta
 pub fn save_dictation_settings(
     app: AppHandle,
     state: tauri::State<DictationState>,
-    settings: DictationSettings,
+    mut settings: DictationSettings,
 ) -> Result<DictationStatus, String> {
     settings
         .shortcut
         .parse::<handy_keys::Hotkey>()
         .map_err(|error| format!("Invalid shortcut: {error}"))?;
+    settings.activation_mode = ActivationMode::Toggle;
     settings::save(&app, &settings).map_err(|error| error.to_string())?;
     state.set_settings(settings);
     shortcut::restart(&app, &state);
@@ -350,18 +343,15 @@ pub async fn paste_dictation_text(
     keep_result_in_clipboard: bool,
 ) -> Result<output::DictationOutputResult, String> {
     let target = state.active_target(&run_id)?;
-    let app_for_output = app.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        output::deliver(
-            &app_for_output,
-            target.as_ref(),
-            &text,
-            auto_paste,
-            keep_result_in_clipboard,
-        )
-    })
-    .await
-    .map_err(|error| error.to_string())?;
+    let result = output::deliver(
+        &app,
+        target.as_ref(),
+        &text,
+        auto_paste,
+        keep_result_in_clipboard,
+        || state.is_active(&run_id),
+    )
+    .await;
     if state.finish(&run_id) {
         unregister_escape(&app);
     }
@@ -397,18 +387,15 @@ pub fn cancel_dictation_run(
 #[tauri::command]
 pub async fn test_dictation_paste(app: AppHandle) -> Result<output::DictationOutputResult, String> {
     let target = target::capture();
-    let app_for_output = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        output::deliver(
-            &app_for_output,
-            target.as_ref(),
-            "Meetly voice dictation paste test",
-            true,
-            true,
-        )
-    })
+    output::deliver(
+        &app,
+        target.as_ref(),
+        "Meetly voice dictation paste test",
+        true,
+        true,
+        || true,
+    )
     .await
-    .map_err(|error| error.to_string())?
 }
 
 fn now_ms() -> u64 {
@@ -423,10 +410,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_shortcut_is_fn_space_push_to_talk() {
+    fn default_shortcut_is_fn_space_toggle() {
         let settings = DictationSettings::default();
         assert_eq!(settings.shortcut, "Fn+Space");
-        assert_eq!(settings.activation_mode, ActivationMode::PushToTalk);
+        assert_eq!(settings.activation_mode, ActivationMode::Toggle);
         assert!(settings.shortcut.parse::<handy_keys::Hotkey>().is_ok());
     }
 
@@ -439,6 +426,8 @@ mod tests {
         });
         assert!(!state.finish("stale"));
         assert!(state.active.lock().unwrap().is_some());
+        assert!(state.is_active("current"));
         assert!(state.finish("current"));
+        assert!(!state.is_active("current"));
     }
 }

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useEffect, useReducer, useRef } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { blobToBase64, debugLog, isTauriRuntime } from "../platform";
 import { startMicrophoneClip, type MicrophoneClipSession } from "../microphoneClip";
 import { dictationReducer, INITIAL_DICTATION_STATE } from "./dictationReducer";
@@ -19,6 +19,7 @@ const TERMINAL_STATE_MS = 1_800;
 
 export function useDictation() {
   const [state, dispatch] = useReducer(dictationReducer, INITIAL_DICTATION_STATE);
+  const [audioLevel, setAudioLevel] = useState(0);
   const settingsRef = useRef<DictationSettings>(DEFAULT_DICTATION_SETTINGS);
   const currentRunRef = useRef<string | null>(null);
   const clipSessionRef = useRef<MicrophoneClipSession | null>(null);
@@ -75,6 +76,7 @@ export function useDictation() {
   }, []);
 
   const scheduleReset = (runId?: string) => {
+    if (runId && currentRunRef.current === runId) currentRunRef.current = null;
     if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
     resetTimerRef.current = window.setTimeout(() => {
       dispatch({ type: "reset", runId });
@@ -85,6 +87,7 @@ export function useDictation() {
   const cleanupMedia = () => {
     clipSessionRef.current?.cancel();
     clipSessionRef.current = null;
+    setAudioLevel(0);
   };
 
   const startRun = async ({ runId }: DictationShortcutPressed) => {
@@ -92,13 +95,14 @@ export function useDictation() {
       return;
     }
 
+    if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
     currentRunRef.current = runId;
     pendingReleaseRef.current = false;
     cancelledRef.current = false;
     dispatch({ type: "start", runId });
 
     try {
-      const clipSession = await startMicrophoneClip();
+      const clipSession = await startMicrophoneClip({ onLevel: setAudioLevel });
       if (currentRunRef.current !== runId || cancelledRef.current) {
         clipSession.cancel();
         return;
@@ -106,7 +110,7 @@ export function useDictation() {
 
       clipSessionRef.current = clipSession;
       startedAtRef.current = clipSession.startedAt;
-      dispatch({ type: "phase", runId, phase: "recording", message: "正在录音，松开完成" });
+      dispatch({ type: "phase", runId, phase: "recording", message: "再次按下即可转写" });
       debugLog(`[dictation] recording start run=${runId}`);
 
       if (pendingReleaseRef.current) {
@@ -134,6 +138,7 @@ export function useDictation() {
     const session = clipSessionRef.current;
     if (!session) return;
     clipSessionRef.current = null;
+    setAudioLevel(0);
     void session
       .stop()
       .then((blob) => processRecording(runId, session.mimeType, blob))
@@ -199,7 +204,7 @@ export function useDictation() {
           autoPaste: settingsRef.current.autoPasteEnabled,
           keepResultInClipboard: settingsRef.current.keepResultInClipboard,
         });
-        assertCurrent(runId);
+        if (cancelledRef.current || currentRunRef.current !== runId) return;
         dispatch({
           type: "finished",
           runId,
@@ -211,6 +216,7 @@ export function useDictation() {
           `[dictation] output complete run=${runId} duration_ms=${Math.round(performance.now() - pasteStartedAt)} pasted=${output.pasted} copied=${output.copied}`
         );
       } catch (error) {
+        if (cancelledRef.current || currentRunRef.current !== runId) return;
         const message = error instanceof Error ? error.message : String(error);
         debugLog(
           `[dictation] output fallback run=${runId} duration_ms=${Math.round(performance.now() - pasteStartedAt)} reason=${message}`
@@ -227,6 +233,7 @@ export function useDictation() {
       debugLog(`[dictation] complete run=${runId} chars=${finalText.length}`);
       scheduleReset(runId);
     } catch (error) {
+      if (cancelledRef.current || currentRunRef.current !== runId) return;
       const message = error instanceof Error ? error.message : String(error);
       await finishRun(runId);
       dispatch({ type: "failed", runId, message: `语音输入失败：${message}` });
@@ -267,5 +274,20 @@ export function useDictation() {
     scheduleReset();
   };
 
-  return { state };
+  const cancel = () => {
+    const runId = currentRunRef.current;
+    if (runId) void cancelRun(runId);
+  };
+
+  const finishRecording = () => {
+    const runId = currentRunRef.current;
+    if (!runId || cancelledRef.current) return;
+    if (!clipSessionRef.current) {
+      pendingReleaseRef.current = true;
+      return;
+    }
+    stopRecorder(runId);
+  };
+
+  return { state, audioLevel, cancel, finishRecording };
 }

@@ -19,16 +19,17 @@ Ask, Coach, prefetch, and report generation.
 - **THEN** the system SHALL NOT open a microphone recording for Dictation
 - **AND** the system SHALL emit a non-blocking `meeting_active` blocked state
 
-### Requirement: The global shortcut supports press and release semantics
+### Requirement: The global shortcut supports toggle semantics
 
 The system SHALL provide a configurable macOS global shortcut for Dictation
-with push-to-talk as the default activation mode.
+with Typeless-style toggle as the activation mode.
 
-#### Scenario: Push-to-talk shortcut
+#### Scenario: Toggle shortcut
 
-- **WHEN** the configured shortcut is pressed
+- **WHEN** the configured shortcut is pressed while idle
 - **THEN** the system SHALL create one Dictation run and begin microphone capture
-- **WHEN** the same shortcut is released
+- **AND** releasing the shortcut SHALL NOT stop microphone capture
+- **WHEN** the same shortcut is pressed again
 - **THEN** the system SHALL stop microphone capture and begin processing that run
 
 #### Scenario: Duplicate key-down or key repeat
@@ -36,14 +37,6 @@ with push-to-talk as the default activation mode.
 - **WHEN** a shortcut key-down is repeated while its Dictation run is active
 - **THEN** the system SHALL NOT create another run
 - **AND** the system SHALL NOT restart microphone capture
-
-#### Scenario: Toggle activation mode
-
-- **WHEN** activation mode is `toggle`
-- **AND** the user presses the shortcut while idle
-- **THEN** the system SHALL start one Dictation run
-- **WHEN** the user presses the shortcut again while recording
-- **THEN** the system SHALL stop and process that run
 
 #### Scenario: Fn plus Space is configured
 

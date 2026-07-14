@@ -86,7 +86,7 @@ src-tauri/src/dictation/
 
 ### 3.1 Why not only `tauri-plugin-global-shortcut`
 
-普通组合键可以使用 Tauri global shortcut，但 `Fn` 在 macOS 上表现为 function modifier，并通过 `flagsChanged` 参与状态变化。可靠的 `Fn + Space` push-to-talk 需要：
+普通组合键可以使用 Tauri global shortcut，但 `Fn` 在 macOS 上表现为 function modifier，并通过 `flagsChanged` 参与状态变化。可靠的 `Fn + Space` toggle 需要：
 
 - 监听 `keyDown`、`keyUp` 和 `flagsChanged`；
 - 识别 function modifier；
@@ -98,7 +98,7 @@ src-tauri/src/dictation/
 因此 shortcut service 提供两个 backend：
 
 ```text
-native event tap: Fn、modifier-only、push-to-talk 精确 release
+native event tap: Fn、modifier-only、精确 press/release edge
 standard global shortcut: Option+Space 等普通 fallback
 ```
 
@@ -106,7 +106,7 @@ standard global shortcut: Option+Space 等普通 fallback
 
 ```text
 shortcut = Fn+Space
-activationMode = push_to_talk
+activationMode = toggle
 fallbackShortcut = Option+Space
 ```
 
@@ -268,7 +268,7 @@ type DictationSettings = {
   enabled: boolean;
   shortcut: string;
   fallbackShortcut: string;
-  activationMode: "push_to_talk" | "toggle";
+  activationMode: "toggle";
   aiPolishEnabled: boolean;
   autoPasteEnabled: boolean;
   keepResultInClipboard: boolean;

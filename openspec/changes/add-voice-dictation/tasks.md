@@ -30,7 +30,7 @@
 - [x] Block Dictation while Meeting listening is active.
 - [x] Register Escape only while a run is active.
 - [x] Add shortcut registration diagnostics and conflict errors.
-- [ ] Verify push-to-talk and toggle behavior with a fixed output payload.
+- [ ] Verify toggle behavior with a fixed output payload.
 
 ## Step 4: Microphone Recording and STT
 
@@ -61,7 +61,7 @@
 - [x] Reset pressed state and re-enable the event tap after system timeout/interruption.
 - [x] Keep the standard shortcut backend as a permission/conflict fallback.
 - [x] Add matcher and transition tests for Fn, key repeat, quick release, and interruption.
-- [ ] Manually verify push-to-talk and toggle modes.
+- [ ] Manually verify toggle start/stop and Escape cancellation.
 
 ## Step 7: Settings and Island UX
 
