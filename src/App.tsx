@@ -11,6 +11,7 @@ import {
   Mic,
   MicOff,
   MonitorUp,
+  MessageCircle,
   PenLine,
   Settings as SettingsIcon,
   Sparkles,
@@ -34,6 +35,8 @@ import { safeInvoke } from "./app/platform";
 import type { AudioSource, MeetingPerspective, SessionKind } from "./app/types";
 import type { DictationViewState } from "./app/dictation/types";
 import { useDictation } from "./app/dictation/useDictation";
+import type { VoiceAskViewState } from "./app/voiceAsk/types";
+import { useVoiceAsk } from "./app/voiceAsk/useVoiceAsk";
 import { useAgentRuntime } from "./app/useAgentRuntime";
 import { useAssistantAsk } from "./app/useAssistantAsk";
 import { useAutoAssist } from "./app/useAutoAssist";
@@ -56,10 +59,14 @@ export function App() {
   const mic = useMicMeeting(ctx, agent, autoAssist, session, windowActions);
   const assistant = useAssistantAsk(ctx, session, windowActions, mic.flushCurrentMicSegment);
   const dictation = useDictation();
+  const voiceAsk = useVoiceAsk();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const previewPhase = import.meta.env.DEV
     ? new URLSearchParams(window.location.search).get("dictation")
+    : null;
+  const voiceAskPreviewPhase = import.meta.env.DEV
+    ? new URLSearchParams(window.location.search).get("voiceAsk")
     : null;
   const dictationState: DictationViewState = previewPhase
     ? {
@@ -71,10 +78,34 @@ export function App() {
       }
     : dictation.state;
   const dictationVisible = dictationState.phase !== "idle";
+  const voiceAskState: VoiceAskViewState = voiceAskPreviewPhase
+    ? {
+        runId: "voice-ask-preview",
+        phase: voiceAskPreviewPhase as VoiceAskViewState["phase"],
+        message: voiceAskPreviewPhase === "recording" ? "松开 Fn 即可提问" : "Thinking...",
+        question: voiceAskPreviewPhase === "answered" ? "如何把一个复杂问题讲清楚？" : null,
+        suggestion: voiceAskPreviewPhase === "answered"
+          ? {
+              answer: "先给结论，再解释判断依据，最后用一个具体例子说明它如何落地。",
+              bullets: ["一句话说清核心判断", "只保留支持结论的关键证据", "用例子收尾"],
+              clarifyingQuestion: null,
+            }
+          : null,
+      }
+    : voiceAsk.state;
+  const voiceAskVisible = voiceAskState.phase !== "idle";
+  const overlayVisible = voiceAskVisible || dictationVisible;
+  const voiceAskHasAnswer = voiceAskState.phase === "answered" || voiceAskState.phase === "error";
+  const overlayWidth = voiceAskVisible ? (voiceAskHasAnswer ? 480 : 340) : 320;
+  const overlayHeight = voiceAskVisible ? (voiceAskHasAnswer ? 300 : 74) : 74;
 
   useEffect(() => {
-    void safeInvoke("set_dictation_overlay_mode", { enabled: dictationVisible });
-  }, [dictationVisible]);
+    void safeInvoke("set_dictation_overlay_mode", {
+      enabled: overlayVisible,
+      width: overlayWidth,
+      height: overlayHeight,
+    });
+  }, [overlayHeight, overlayVisible, overlayWidth]);
 
   useTauriEvents(ctx, autoAssist, session);
 
@@ -150,6 +181,20 @@ export function App() {
     event.target.value = "";
     await processContextFiles(files);
   };
+
+  if (voiceAskVisible) {
+    return (
+      <main className="flex h-screen w-screen items-start justify-center overflow-hidden bg-transparent">
+        <div className="relative h-full w-full p-2.5">
+          <VoiceAskOverlay
+            state={voiceAskState}
+            audioLevel={voiceAskPreviewPhase ? 0.68 : voiceAsk.audioLevel}
+            close={voiceAsk.close}
+          />
+        </div>
+      </main>
+    );
+  }
 
   if (dictationVisible) {
     return (
@@ -285,6 +330,121 @@ export function App() {
         </div>
       </div>
     </main>
+  );
+}
+
+function VoiceAskOverlay({
+  state,
+  audioLevel,
+  close,
+}: {
+  state: VoiceAskViewState;
+  audioLevel: number;
+  close: () => void;
+}) {
+  const isThinking = state.phase === "transcribing" || state.phase === "thinking";
+
+  if (isThinking) {
+    return (
+      <section
+        className="flex h-[54px] w-full select-none items-center justify-center rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.94)] px-4 shadow-[0_12px_32px_rgb(0_0_0_/_0.42)] backdrop-blur-2xl"
+        aria-label="AI 正在思考"
+        aria-live="polite"
+      >
+        <span className="text-[13px] font-medium text-white/72">Thinking...</span>
+      </section>
+    );
+  }
+
+  if (state.phase === "answered" || state.phase === "error") {
+    return (
+      <section
+        className="flex h-full w-full flex-col overflow-hidden rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.96)] shadow-[0_16px_42px_rgb(0_0_0_/_0.46)] backdrop-blur-2xl"
+        aria-label="AI 回答"
+        aria-live="polite"
+      >
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-white/[0.08] px-3.5">
+          <MessageCircle className="h-4 w-4 text-[#64e594]" />
+          <span className="text-[13px] font-semibold text-white/82">Ask AI</span>
+          <button
+            type="button"
+            className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-full border-0 bg-white/[0.06] text-white/48 transition-colors hover:bg-white/[0.12] hover:text-white/85 [&_svg]:h-4 [&_svg]:w-4"
+            title="关闭"
+            aria-label="关闭回答"
+            onClick={close}
+          >
+            <X />
+          </button>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3.5">
+          {state.question && (
+            <p className="m-0 mb-3 line-clamp-2 text-[11px] leading-relaxed text-white/38">
+              {state.question}
+            </p>
+          )}
+          {state.phase === "error" ? (
+            <p className="m-0 text-[13px] leading-relaxed text-[#ff9ba8]">{state.message}</p>
+          ) : (
+            <>
+              <p className="m-0 whitespace-pre-wrap text-[14px] leading-relaxed text-white/88">
+                {state.suggestion?.answer}
+              </p>
+              {state.suggestion && state.suggestion.bullets.length > 0 && (
+                <ul className="mt-3 grid gap-1.5 pl-4 text-[12px] leading-relaxed text-white/62">
+                  {state.suggestion.bullets.map((bullet, index) => (
+                    <li key={`${bullet}-${index}`}>{bullet}</li>
+                  ))}
+                </ul>
+              )}
+              {state.suggestion?.clarifyingQuestion && (
+                <p className="mt-3 mb-0 border-t border-white/[0.08] pt-3 text-[12px] leading-relaxed text-white/58">
+                  {state.suggestion.clarifyingQuestion}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  if (state.phase === "cancelled") {
+    return (
+      <section className="flex h-[54px] w-full items-center justify-center rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.94)] px-4 shadow-[0_12px_32px_rgb(0_0_0_/_0.42)] backdrop-blur-2xl">
+        <span className="text-[13px] font-medium text-white/52">已取消</span>
+      </section>
+    );
+  }
+
+  return (
+    <section
+      className="flex h-[54px] w-full select-none items-center gap-2 rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.94)] p-2 shadow-[0_12px_32px_rgb(0_0_0_/_0.42)] backdrop-blur-2xl"
+      aria-label="语音提问"
+    >
+      <button
+        type="button"
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-0 bg-white/[0.07] text-white/55 transition-colors hover:bg-[#ff5c70]/18 hover:text-[#ff8c99] [&_svg]:h-4 [&_svg]:w-4"
+        title="取消语音提问"
+        aria-label="取消语音提问"
+        onClick={close}
+      >
+        <X />
+      </button>
+      <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5" aria-live="polite">
+        {state.phase === "recording" ? (
+          <DictationWaveform level={audioLevel} />
+        ) : (
+          <span className="text-[12px] font-medium text-white/72">准备提问</span>
+        )}
+        <span className="max-w-[220px] truncate text-[10px] text-white/38">
+          {state.phase === "recording" ? "松开 Fn 即可提问" : state.message}
+        </span>
+      </div>
+      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center text-[#64e594] [&_svg]:h-4 [&_svg]:w-4">
+        <MessageCircle />
+      </span>
+    </section>
   );
 }
 

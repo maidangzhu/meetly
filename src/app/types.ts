@@ -41,7 +41,7 @@ export type PartialTranscript = {
   endMs: number;
 };
 
-export type AssistantMode = "interview" | "interviewer" | "meeting" | "sales";
+export type AssistantMode = "general" | "interview" | "interviewer" | "meeting" | "sales";
 
 export type AssistantSuggestion = {
   answer: string;

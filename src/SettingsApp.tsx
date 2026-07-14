@@ -319,15 +319,15 @@ function DictationSection() {
 
   return (
     <section className="mb-6 rounded-xl border border-white/[0.08] bg-white/[0.04] p-4">
-      <h2 className="m-0 text-sm font-semibold">Voice dictation</h2>
+      <h2 className="m-0 text-sm font-semibold">Voice shortcuts</h2>
       <p className="mt-1 mb-4 text-xs leading-relaxed text-white/50">
-        Press once to record, then press again to transcribe. Press Escape to cancel.
+        Press Fn + Space twice to dictate. Hold Fn to ask AI, then release to submit. Press Escape to cancel.
       </p>
 
       <label className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-white/[0.08] bg-white/[0.04] p-3 text-sm">
         <span>
-          <span className="block text-[13px] font-medium">Enable voice dictation</span>
-          <span className="block text-xs text-white/45">Runs independently from Meeting and Coach.</span>
+          <span className="block text-[13px] font-medium">Enable voice shortcuts</span>
+          <span className="block text-xs text-white/45">Dictation and Voice Ask run independently from Meeting and Coach.</span>
         </span>
         <input
           type="checkbox"

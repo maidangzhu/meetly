@@ -41,6 +41,8 @@ pub fn set_dictation_overlay_mode(
     window: WebviewWindow,
     state: State<DictationOverlayState>,
     enabled: bool,
+    width: Option<f64>,
+    height: Option<f64>,
 ) -> Result<(), String> {
     let mut snapshot = state
         .snapshot
@@ -48,29 +50,20 @@ pub fn set_dictation_overlay_mode(
         .map_err(|error| format!("Failed to lock Dictation window state: {error}"))?;
 
     if enabled {
-        if snapshot.is_some() {
-            return Ok(());
+        if snapshot.is_none() {
+            *snapshot = Some(WindowSnapshot {
+                position: window.outer_position().map_err(|error| error.to_string())?,
+                size: window.outer_size().map_err(|error| error.to_string())?,
+            });
         }
-        *snapshot = Some(WindowSnapshot {
-            position: window.outer_position().map_err(|error| error.to_string())?,
-            size: window.outer_size().map_err(|error| error.to_string())?,
-        });
         window
             .set_min_size(None::<tauri::LogicalSize<f64>>)
             .map_err(|error| error.to_string())?;
-        window
-            .set_min_size(Some(tauri::LogicalSize::new(
-                DICTATION_WINDOW_WIDTH,
-                DICTATION_WINDOW_HEIGHT,
-            )))
-            .map_err(|error| error.to_string())?;
-        window
-            .set_size(tauri::LogicalSize::new(
-                DICTATION_WINDOW_WIDTH,
-                DICTATION_WINDOW_HEIGHT,
-            ))
-            .map_err(|error| error.to_string())?;
-        position_bottom_center(&window)?;
+        position_overlay_on_cursor_monitor(
+            &window,
+            width.unwrap_or(DICTATION_WINDOW_WIDTH),
+            height.unwrap_or(DICTATION_WINDOW_HEIGHT),
+        )?;
         return Ok(());
     }
 
@@ -180,26 +173,30 @@ fn position_top_center(window: &WebviewWindow) -> tauri::Result<()> {
     Ok(())
 }
 
-fn position_bottom_center(window: &WebviewWindow) -> Result<(), String> {
-    let Some(monitor) = window
-        .current_monitor()
-        .map_err(|error| error.to_string())?
-        .or(window
-            .primary_monitor()
-            .map_err(|error| error.to_string())?)
+fn position_overlay_on_cursor_monitor(
+    window: &WebviewWindow,
+    logical_width: f64,
+    logical_height: f64,
+) -> Result<(), String> {
+    let Some((monitor_x, monitor_y, monitor_width, monitor_height, scale)) =
+        cursor_monitor_geometry(window)?
     else {
         return Ok(());
     };
-    let scale = window.scale_factor().map_err(|error| error.to_string())?;
-    let monitor_position = monitor.position();
-    let monitor_size = monitor.size();
-    let window_width = (DICTATION_WINDOW_WIDTH * scale).round() as i32;
-    let window_height = (DICTATION_WINDOW_HEIGHT * scale).round() as i32;
+
+    let window_width = (logical_width * scale).round() as i32;
+    let window_height = (logical_height * scale).round() as i32;
+    window
+        .set_size(PhysicalSize::new(
+            window_width.max(1) as u32,
+            window_height.max(1) as u32,
+        ))
+        .map_err(|error| error.to_string())?;
     let (x, y) = bottom_center_coordinates(
-        monitor_position.x,
-        monitor_position.y,
-        monitor_size.width as i32,
-        monitor_size.height as i32,
+        monitor_x,
+        monitor_y,
+        monitor_width,
+        monitor_height,
         window_width,
         window_height,
         (DICTATION_BOTTOM_OFFSET * scale).round() as i32,
@@ -207,6 +204,72 @@ fn position_bottom_center(window: &WebviewWindow) -> Result<(), String> {
     window
         .set_position(Position::Physical(PhysicalPosition::new(x, y)))
         .map_err(|error| error.to_string())
+}
+
+fn cursor_monitor_geometry(
+    window: &WebviewWindow,
+) -> Result<Option<(i32, i32, i32, i32, f64)>, String> {
+    let cursor = window
+        .cursor_position()
+        .map_err(|error| error.to_string())?;
+    let monitors = window
+        .available_monitors()
+        .map_err(|error| error.to_string())?;
+
+    if let Some(monitor) = monitors.iter().find(|monitor| {
+        let position = monitor.position();
+        let size = monitor.size();
+        monitor_contains_cursor(
+            position.x,
+            position.y,
+            size.width as i32,
+            size.height as i32,
+            cursor.x,
+            cursor.y,
+        )
+    }) {
+        let position = monitor.position();
+        let size = monitor.size();
+        return Ok(Some((
+            position.x,
+            position.y,
+            size.width as i32,
+            size.height as i32,
+            monitor.scale_factor(),
+        )));
+    }
+
+    let fallback = window
+        .current_monitor()
+        .map_err(|error| error.to_string())?
+        .or(window
+            .primary_monitor()
+            .map_err(|error| error.to_string())?);
+    Ok(fallback.map(|monitor| {
+        let position = monitor.position();
+        let size = monitor.size();
+        (
+            position.x,
+            position.y,
+            size.width as i32,
+            size.height as i32,
+            monitor.scale_factor(),
+        )
+    }))
+}
+
+fn monitor_contains_cursor(
+    monitor_x: i32,
+    monitor_y: i32,
+    monitor_width: i32,
+    monitor_height: i32,
+    cursor_x: f64,
+    cursor_y: f64,
+) -> bool {
+    cursor_x >= monitor_x as f64
+        && cursor_x < (monitor_x + monitor_width) as f64
+        && cursor_y >= monitor_y as f64
+        && cursor_y < (monitor_y + monitor_height) as f64
 }
 
 fn bottom_center_coordinates(
@@ -349,7 +412,7 @@ fn setup_macos_panel(window: &WebviewWindow) {
 
 #[cfg(test)]
 mod tests {
-    use super::bottom_center_coordinates;
+    use super::{bottom_center_coordinates, monitor_contains_cursor};
 
     #[test]
     fn dictation_overlay_is_centered_near_monitor_bottom() {
@@ -365,5 +428,16 @@ mod tests {
             bottom_center_coordinates(-1920, -120, 1920, 1080, 320, 74, 56),
             (-1120, 830)
         );
+    }
+
+    #[test]
+    fn overlay_selects_monitor_containing_cursor() {
+        assert!(monitor_contains_cursor(
+            -1920, -120, 1920, 1080, -800.0, 400.0
+        ));
+        assert!(!monitor_contains_cursor(
+            -1920, -120, 1920, 1080, 300.0, 400.0
+        ));
+        assert!(monitor_contains_cursor(0, 0, 1512, 982, 300.0, 400.0));
     }
 }

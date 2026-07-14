@@ -19,7 +19,14 @@ const ESCAPE_SHORTCUT: &str = "Escape";
 #[derive(Debug, Clone)]
 struct ActiveRun {
     id: String,
+    kind: ActiveRunKind,
     target: Option<TargetSnapshot>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActiveRunKind {
+    Dictation,
+    VoiceAsk,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -75,27 +82,36 @@ impl DictationState {
         let Some(run) = active.as_ref() else {
             return Err("Dictation run is no longer active.".to_string());
         };
-        if run.id != run_id {
+        if run.id != run_id || run.kind != ActiveRunKind::Dictation {
             return Err("Dictation result belongs to a stale run.".to_string());
         }
         Ok(run.target.clone())
     }
 
-    fn finish(&self, run_id: &str) -> bool {
+    fn active_run(&self) -> Option<(String, ActiveRunKind)> {
+        self.active
+            .lock()
+            .ok()
+            .and_then(|active| active.as_ref().map(|run| (run.id.clone(), run.kind)))
+    }
+
+    fn finish(&self, run_id: &str, kind: ActiveRunKind) -> bool {
         let Ok(mut active) = self.active.lock() else {
             return false;
         };
-        if active.as_ref().map(|run| run.id.as_str()) != Some(run_id) {
+        if active.as_ref().map(|run| (run.id.as_str(), run.kind)) != Some((run_id, kind)) {
             return false;
         }
         active.take();
         true
     }
 
-    fn is_active(&self, run_id: &str) -> bool {
+    fn is_active(&self, run_id: &str, kind: ActiveRunKind) -> bool {
         self.active
             .lock()
-            .map(|active| active.as_ref().map(|run| run.id.as_str()) == Some(run_id))
+            .map(|active| {
+                active.as_ref().map(|run| (run.id.as_str(), run.kind)) == Some((run_id, kind))
+            })
             .unwrap_or(false)
     }
 }
@@ -167,14 +183,39 @@ pub(crate) fn handle_shortcut_event(app: &AppHandle, pressed: bool) {
         return;
     }
     let state = app.state::<DictationState>();
-    let active = state
-        .active
-        .lock()
-        .map(|run| run.is_some())
-        .unwrap_or(false);
-    if active {
-        release_run(app);
+    match state.active_run().map(|(_, kind)| kind) {
+        Some(ActiveRunKind::Dictation) => release_run(app),
+        Some(ActiveRunKind::VoiceAsk) => {}
+        None => begin_run(app),
+    }
+}
+
+pub(crate) fn handle_voice_ask_event(app: &AppHandle, pressed: bool) {
+    if pressed {
+        begin_voice_ask(app);
     } else {
+        release_voice_ask(app);
+    }
+}
+
+pub(crate) fn switch_voice_ask_to_dictation(app: &AppHandle) {
+    let state = app.state::<DictationState>();
+    let voice_ask_run_id = {
+        let Ok(mut active) = state.active.lock() else {
+            return;
+        };
+        match active.as_ref() {
+            Some(run) if run.kind == ActiveRunKind::VoiceAsk => {
+                let run_id = run.id.clone();
+                active.take();
+                Some(run_id)
+            }
+            _ => None,
+        }
+    };
+
+    if let Some(run_id) = voice_ask_run_id {
+        let _ = app.emit("voice_ask_superseded", run_id);
         begin_run(app);
     }
 }
@@ -200,6 +241,7 @@ fn begin_run(app: &AppHandle) {
     let run_id = format!("dictation-{started_at:x}");
     *active = Some(ActiveRun {
         id: run_id.clone(),
+        kind: ActiveRunKind::Dictation,
         target: target::capture(),
     });
     drop(active);
@@ -214,10 +256,8 @@ fn begin_run(app: &AppHandle) {
 fn release_run(app: &AppHandle) {
     let state = app.state::<DictationState>();
     let run_id = state
-        .active
-        .lock()
-        .ok()
-        .and_then(|run| run.as_ref().map(|run| run.id.clone()));
+        .active_run()
+        .and_then(|(run_id, kind)| (kind == ActiveRunKind::Dictation).then_some(run_id));
     if let Some(run_id) = run_id {
         let _ = app.emit(
             "dictation_shortcut_released",
@@ -229,16 +269,58 @@ fn release_run(app: &AppHandle) {
     }
 }
 
-fn cancel_active(app: &AppHandle) {
+fn begin_voice_ask(app: &AppHandle) {
+    let state = app.state::<DictationState>();
+    let Ok(mut active) = state.active.lock() else {
+        return;
+    };
+    if active.is_some() {
+        return;
+    }
+
+    let started_at = now_ms();
+    let run_id = format!("voice-ask-{started_at:x}");
+    *active = Some(ActiveRun {
+        id: run_id.clone(),
+        kind: ActiveRunKind::VoiceAsk,
+        target: None,
+    });
+    drop(active);
+
+    register_escape(app);
+    let _ = app.emit(
+        "voice_ask_pressed",
+        ShortcutPressedPayload { run_id, started_at },
+    );
+}
+
+fn release_voice_ask(app: &AppHandle) {
     let state = app.state::<DictationState>();
     let run_id = state
-        .active
-        .lock()
-        .ok()
-        .and_then(|mut run| run.take().map(|run| run.id));
+        .active_run()
+        .and_then(|(run_id, kind)| (kind == ActiveRunKind::VoiceAsk).then_some(run_id));
     if let Some(run_id) = run_id {
-        unregister_escape(app);
-        let _ = app.emit("dictation_cancel_requested", run_id);
+        let _ = app.emit(
+            "voice_ask_released",
+            ShortcutReleasedPayload {
+                run_id,
+                released_at: now_ms(),
+            },
+        );
+    }
+}
+
+fn cancel_active(app: &AppHandle) {
+    let state = app.state::<DictationState>();
+    if let Some((run_id, kind)) = state.active_run() {
+        let event = match kind {
+            ActiveRunKind::Dictation => "dictation_cancel_requested",
+            ActiveRunKind::VoiceAsk => "voice_ask_cancel_requested",
+        };
+        // Do not unregister Escape from inside its own shortcut callback.
+        // The frontend cancellation command finishes the run and unregisters
+        // it after this callback has returned, avoiding a plugin-thread deadlock.
+        let _ = app.emit(event, run_id);
     }
 }
 
@@ -349,10 +431,10 @@ pub async fn paste_dictation_text(
         &text,
         auto_paste,
         keep_result_in_clipboard,
-        || state.is_active(&run_id),
+        || state.is_active(&run_id, ActiveRunKind::Dictation),
     )
     .await;
-    if state.finish(&run_id) {
+    if state.finish(&run_id, ActiveRunKind::Dictation) {
         unregister_escape(&app);
     }
     result
@@ -364,7 +446,7 @@ pub fn finish_dictation_run(
     state: tauri::State<DictationState>,
     run_id: String,
 ) -> bool {
-    let finished = state.finish(&run_id);
+    let finished = state.finish(&run_id, ActiveRunKind::Dictation);
     if finished {
         unregister_escape(&app);
     }
@@ -377,7 +459,33 @@ pub fn cancel_dictation_run(
     state: tauri::State<DictationState>,
     run_id: String,
 ) -> bool {
-    let cancelled = state.finish(&run_id);
+    let cancelled = state.finish(&run_id, ActiveRunKind::Dictation);
+    if cancelled {
+        unregister_escape(&app);
+    }
+    cancelled
+}
+
+#[tauri::command]
+pub fn finish_voice_ask_run(
+    app: AppHandle,
+    state: tauri::State<DictationState>,
+    run_id: String,
+) -> bool {
+    let finished = state.finish(&run_id, ActiveRunKind::VoiceAsk);
+    if finished {
+        unregister_escape(&app);
+    }
+    finished
+}
+
+#[tauri::command]
+pub fn cancel_voice_ask_run(
+    app: AppHandle,
+    state: tauri::State<DictationState>,
+    run_id: String,
+) -> bool {
+    let cancelled = state.finish(&run_id, ActiveRunKind::VoiceAsk);
     if cancelled {
         unregister_escape(&app);
     }
@@ -422,12 +530,14 @@ mod tests {
         let state = DictationState::default();
         *state.active.lock().unwrap() = Some(ActiveRun {
             id: "current".to_string(),
+            kind: ActiveRunKind::Dictation,
             target: None,
         });
-        assert!(!state.finish("stale"));
+        assert!(!state.finish("stale", ActiveRunKind::Dictation));
         assert!(state.active.lock().unwrap().is_some());
-        assert!(state.is_active("current"));
-        assert!(state.finish("current"));
-        assert!(!state.is_active("current"));
+        assert!(state.is_active("current", ActiveRunKind::Dictation));
+        assert!(!state.finish("current", ActiveRunKind::VoiceAsk));
+        assert!(state.finish("current", ActiveRunKind::Dictation));
+        assert!(!state.is_active("current", ActiveRunKind::Dictation));
     }
 }

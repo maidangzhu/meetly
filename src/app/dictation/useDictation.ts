@@ -255,6 +255,7 @@ export function useDictation() {
     cleanupMedia();
     await invoke("cancel_dictation_run", { runId }).catch(() => undefined);
     dispatch({ type: "cancelled", runId });
+    debugLog(`[dictation] cancelled run=${runId}`);
     scheduleReset(runId);
   };
 
