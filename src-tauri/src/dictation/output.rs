@@ -53,6 +53,7 @@ where
     };
 
     if !super::target::activate(app, target).await {
+        let _ = crate::debug_log::append("[dictation-output] target activation failed");
         return Ok(copied("The original app is unavailable. Text was copied."));
     }
 
@@ -60,8 +61,10 @@ where
     if !can_paste() {
         return Ok(copied("Dictation was cancelled. Text was copied."));
     }
+    let _ = crate::debug_log::append("[dictation-output] posting Command+V with CGEvent");
     send_paste()
         .map_err(|error| format!("Text was copied, but automatic paste failed: {error}"))?;
+    let _ = crate::debug_log::append("[dictation-output] Command+V posted");
 
     if let Some(previous) = previous_clipboard {
         sleep(Duration::from_millis(140)).await;

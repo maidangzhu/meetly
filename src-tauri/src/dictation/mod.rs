@@ -198,6 +198,10 @@ pub(crate) fn handle_voice_ask_event(app: &AppHandle, pressed: bool) {
     }
 }
 
+pub(crate) fn has_active_run(app: &AppHandle) -> bool {
+    app.state::<DictationState>().active_run().is_some()
+}
+
 pub(crate) fn switch_voice_ask_to_dictation(app: &AppHandle) {
     let state = app.state::<DictationState>();
     let voice_ask_run_id = {
@@ -246,6 +250,7 @@ fn begin_run(app: &AppHandle) {
     });
     drop(active);
 
+    crate::window::prepare_dictation_overlay(app);
     register_escape(app);
     let _ = app.emit(
         "dictation_shortcut_pressed",
@@ -287,6 +292,7 @@ fn begin_voice_ask(app: &AppHandle) {
     });
     drop(active);
 
+    crate::window::prepare_voice_ask_overlay(app);
     register_escape(app);
     let _ = app.emit(
         "voice_ask_pressed",

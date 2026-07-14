@@ -71,6 +71,11 @@ pub fn run() {
             app::report_service::generate_interview_report,
         ])
         .setup(|app| {
+            let _ = debug_log::append(&format!(
+                "[native] app start version={} debug_assertions={}",
+                app.package_info().version,
+                cfg!(debug_assertions)
+            ));
             window::setup_island_window(app)?;
             providers::dev_env::seed_from_dotenv_if_missing(app.handle());
             dictation::initialize(app.handle());

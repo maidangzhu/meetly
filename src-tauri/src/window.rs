@@ -1,13 +1,15 @@
 use std::{sync::Mutex, time::Duration};
-use tauri::{App, Manager, PhysicalPosition, PhysicalSize, Position, State, WebviewWindow};
+use tauri::{
+    App, AppHandle, Manager, PhysicalPosition, PhysicalSize, Position, State, WebviewWindow,
+};
 
 const COLLAPSED_WIDTH: f64 = 600.0;
 const EXPANDED_WIDTH: f64 = 920.0;
 const COLLAPSED_HEIGHT: f64 = 54.0;
 const OUTER_GUTTER: f64 = 10.0;
 const TOP_OFFSET: i32 = 54;
-const DICTATION_WINDOW_WIDTH: f64 = 320.0;
-const DICTATION_WINDOW_HEIGHT: f64 = 74.0;
+const COMPACT_OVERLAY_WIDTH: f64 = 380.0;
+const COMPACT_OVERLAY_HEIGHT: f64 = 74.0;
 const DICTATION_BOTTOM_OFFSET: f64 = 56.0;
 
 #[derive(Debug, Clone)]
@@ -18,7 +20,25 @@ struct WindowSnapshot {
 
 #[derive(Default)]
 pub struct DictationOverlayState {
-    snapshot: Mutex<Option<WindowSnapshot>>,
+    inner: Mutex<OverlayWindowState>,
+}
+
+#[derive(Default)]
+struct OverlayWindowState {
+    snapshot: Option<WindowSnapshot>,
+    cursor_monitor: Option<CursorMonitorGeometry>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CursorMonitorGeometry {
+    source: &'static str,
+    cursor_x: f64,
+    cursor_y: f64,
+    monitor_x: i32,
+    monitor_y: i32,
+    monitor_width: i32,
+    monitor_height: i32,
+    scale: f64,
 }
 
 #[tauri::command]
@@ -38,43 +58,64 @@ pub fn set_island_height(window: WebviewWindow, height: u32) -> Result<(), Strin
 
 #[tauri::command]
 pub fn set_dictation_overlay_mode(
+    app: AppHandle,
     window: WebviewWindow,
     state: State<DictationOverlayState>,
     enabled: bool,
     width: Option<f64>,
     height: Option<f64>,
 ) -> Result<(), String> {
-    let mut snapshot = state
-        .snapshot
+    if !enabled && crate::dictation::has_active_run(&app) {
+        let _ = crate::debug_log::append("[overlay] ignored restore while voice run is active");
+        return Ok(());
+    }
+    set_overlay_mode(&window, &state, enabled, width, height)
+}
+
+fn set_overlay_mode(
+    window: &WebviewWindow,
+    state: &DictationOverlayState,
+    enabled: bool,
+    width: Option<f64>,
+    height: Option<f64>,
+) -> Result<(), String> {
+    let mut overlay = state
+        .inner
         .lock()
         .map_err(|error| format!("Failed to lock Dictation window state: {error}"))?;
 
     if enabled {
-        if snapshot.is_none() {
-            *snapshot = Some(WindowSnapshot {
-                position: window.outer_position().map_err(|error| error.to_string())?,
-                size: window.outer_size().map_err(|error| error.to_string())?,
-            });
+        if overlay.snapshot.is_none() {
+            overlay.snapshot = Some(capture_window_snapshot(window)?);
+        }
+        if overlay.cursor_monitor.is_none() {
+            overlay.cursor_monitor = cursor_monitor_geometry(window)?;
         }
         window
             .set_min_size(None::<tauri::LogicalSize<f64>>)
             .map_err(|error| error.to_string())?;
-        position_overlay_on_cursor_monitor(
-            &window,
-            width.unwrap_or(DICTATION_WINDOW_WIDTH),
-            height.unwrap_or(DICTATION_WINDOW_HEIGHT),
+        position_overlay(
+            window,
+            overlay.cursor_monitor,
+            width.unwrap_or(COMPACT_OVERLAY_WIDTH),
+            height.unwrap_or(COMPACT_OVERLAY_HEIGHT),
         )?;
         return Ok(());
     }
 
-    let Some(previous) = snapshot.take() else {
+    overlay.cursor_monitor = None;
+    let Some(previous) = overlay.snapshot.take() else {
         return Ok(());
     };
     window
         .set_min_size(None::<tauri::LogicalSize<f64>>)
         .map_err(|error| error.to_string())?;
+    let restore_size = normalized_restore_size(
+        previous.size,
+        monitor_scale_at_position(window, previous.position)?,
+    );
     window
-        .set_size(previous.size)
+        .set_size(restore_size)
         .map_err(|error| error.to_string())?;
     window
         .set_position(Position::Physical(previous.position))
@@ -85,7 +126,118 @@ pub fn set_dictation_overlay_mode(
             COLLAPSED_HEIGHT,
         )))
         .map_err(|error| error.to_string())?;
+    let _ = crate::debug_log::append(&format!(
+        "[overlay] restored snapshot_size={}x{} restore_size={}x{} position=({},{})",
+        previous.size.width,
+        previous.size.height,
+        restore_size.width,
+        restore_size.height,
+        previous.position.x,
+        previous.position.y
+    ));
     Ok(())
+}
+
+fn capture_window_snapshot(window: &WebviewWindow) -> Result<WindowSnapshot, String> {
+    let snapshot = WindowSnapshot {
+        position: window.outer_position().map_err(|error| error.to_string())?,
+        size: window.outer_size().map_err(|error| error.to_string())?,
+    };
+    let _ = crate::debug_log::append(&format!(
+        "[overlay] captured snapshot size={}x{} position=({},{})",
+        snapshot.size.width, snapshot.size.height, snapshot.position.x, snapshot.position.y
+    ));
+    Ok(snapshot)
+}
+
+fn monitor_scale_at_position(
+    window: &WebviewWindow,
+    position: PhysicalPosition<i32>,
+) -> Result<f64, String> {
+    let monitors = window
+        .available_monitors()
+        .map_err(|error| error.to_string())?;
+    Ok(monitors
+        .iter()
+        .find(|monitor| {
+            let origin = monitor.position();
+            let size = monitor.size();
+            monitor_contains_cursor(
+                origin.x,
+                origin.y,
+                size.width as i32,
+                size.height as i32,
+                position.x as f64,
+                position.y as f64,
+            )
+        })
+        .map(|monitor| monitor.scale_factor())
+        .unwrap_or(window.scale_factor().map_err(|error| error.to_string())?))
+}
+
+fn normalized_restore_size(size: PhysicalSize<u32>, scale: f64) -> PhysicalSize<u32> {
+    let collapsed = collapsed_window_size();
+    let logical_width = size.width as f64 / scale;
+    if logical_width + 1.0 < collapsed.width {
+        return PhysicalSize::new(
+            (collapsed.width * scale).round() as u32,
+            (collapsed.height * scale).round() as u32,
+        );
+    }
+    size
+}
+
+pub(crate) fn prepare_dictation_overlay(app: &AppHandle) {
+    prepare_compact_overlay(app, "dictation");
+}
+
+pub(crate) fn prepare_voice_ask_overlay(app: &AppHandle) {
+    prepare_compact_overlay(app, "voice-ask");
+}
+
+fn prepare_compact_overlay(app: &AppHandle, kind: &str) {
+    let app_for_task = app.clone();
+    let kind = kind.to_string();
+    let task_kind = kind.clone();
+    if let Err(error) = app.run_on_main_thread(move || {
+        prepare_compact_overlay_on_main(&app_for_task, &task_kind);
+    }) {
+        let _ = crate::debug_log::append(&format!(
+            "[overlay] failed to schedule prepare kind={kind} error={error}"
+        ));
+    }
+}
+
+fn prepare_compact_overlay_on_main(app: &AppHandle, kind: &str) {
+    let Some(window) = app.get_webview_window("island") else {
+        return;
+    };
+    let state = app.state::<DictationOverlayState>();
+    let result = (|| {
+        let mut overlay = state
+            .inner
+            .lock()
+            .map_err(|error| format!("Failed to lock Dictation window state: {error}"))?;
+        if overlay.snapshot.is_none() {
+            overlay.snapshot = Some(capture_window_snapshot(&window)?);
+        }
+        overlay.cursor_monitor = cursor_monitor_geometry(&window)?;
+        window
+            .set_min_size(None::<tauri::LogicalSize<f64>>)
+            .map_err(|error| error.to_string())?;
+        position_overlay(
+            &window,
+            overlay.cursor_monitor,
+            COMPACT_OVERLAY_WIDTH,
+            COMPACT_OVERLAY_HEIGHT,
+        )
+    })();
+
+    if let Err(error) = result {
+        let _ = crate::debug_log::append(&format!(
+            "[overlay] prepare failed kind={kind} error={error}"
+        ));
+    }
 }
 
 #[tauri::command]
@@ -173,19 +325,19 @@ fn position_top_center(window: &WebviewWindow) -> tauri::Result<()> {
     Ok(())
 }
 
-fn position_overlay_on_cursor_monitor(
+fn position_overlay(
     window: &WebviewWindow,
+    geometry: Option<CursorMonitorGeometry>,
     logical_width: f64,
     logical_height: f64,
 ) -> Result<(), String> {
-    let Some((monitor_x, monitor_y, monitor_width, monitor_height, scale)) =
-        cursor_monitor_geometry(window)?
-    else {
+    let Some(geometry) = geometry else {
+        let _ = crate::debug_log::append("[overlay] no monitor geometry available");
         return Ok(());
     };
 
-    let window_width = (logical_width * scale).round() as i32;
-    let window_height = (logical_height * scale).round() as i32;
+    let window_width = (logical_width * geometry.scale).round() as i32;
+    let window_height = (logical_height * geometry.scale).round() as i32;
     window
         .set_size(PhysicalSize::new(
             window_width.max(1) as u32,
@@ -193,22 +345,69 @@ fn position_overlay_on_cursor_monitor(
         ))
         .map_err(|error| error.to_string())?;
     let (x, y) = bottom_center_coordinates(
-        monitor_x,
-        monitor_y,
-        monitor_width,
-        monitor_height,
+        geometry.monitor_x,
+        geometry.monitor_y,
+        geometry.monitor_width,
+        geometry.monitor_height,
         window_width,
         window_height,
-        (DICTATION_BOTTOM_OFFSET * scale).round() as i32,
+        (DICTATION_BOTTOM_OFFSET * geometry.scale).round() as i32,
     );
     window
         .set_position(Position::Physical(PhysicalPosition::new(x, y)))
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    let _ = crate::debug_log::append(&format!(
+        "[overlay] positioned source={} cursor=({:.0},{:.0}) monitor=({},{},{}x{}) scale={:.2} window={}x{} position=({},{})",
+        geometry.source,
+        geometry.cursor_x,
+        geometry.cursor_y,
+        geometry.monitor_x,
+        geometry.monitor_y,
+        geometry.monitor_width,
+        geometry.monitor_height,
+        geometry.scale,
+        window_width,
+        window_height,
+        x,
+        y
+    ));
+    Ok(())
 }
 
 fn cursor_monitor_geometry(
     window: &WebviewWindow,
-) -> Result<Option<(i32, i32, i32, i32, f64)>, String> {
+) -> Result<Option<CursorMonitorGeometry>, String> {
+    #[cfg(target_os = "macos")]
+    if let Some((cursor_x, cursor_y, physical_width, physical_height, scale)) =
+        macos_cursor_screen()
+    {
+        let monitors = window
+            .available_monitors()
+            .map_err(|error| error.to_string())?;
+        if let Some(monitor) = monitors.iter().find(|monitor| {
+            monitor.size().width.abs_diff(physical_width) <= 2
+                && monitor.size().height.abs_diff(physical_height) <= 2
+                && (monitor.scale_factor() - scale).abs() < 0.01
+        }) {
+            let position = monitor.position();
+            let size = monitor.size();
+            return Ok(Some(CursorMonitorGeometry {
+                source: "appkit",
+                cursor_x,
+                cursor_y,
+                monitor_x: position.x,
+                monitor_y: position.y,
+                monitor_width: size.width as i32,
+                monitor_height: size.height as i32,
+                scale: monitor.scale_factor(),
+            }));
+        }
+        let _ = crate::debug_log::append(&format!(
+            "[overlay] AppKit cursor screen unmatched size={}x{} scale={:.2}",
+            physical_width, physical_height, scale
+        ));
+    }
+
     let cursor = window
         .cursor_position()
         .map_err(|error| error.to_string())?;
@@ -230,13 +429,16 @@ fn cursor_monitor_geometry(
     }) {
         let position = monitor.position();
         let size = monitor.size();
-        return Ok(Some((
-            position.x,
-            position.y,
-            size.width as i32,
-            size.height as i32,
-            monitor.scale_factor(),
-        )));
+        return Ok(Some(CursorMonitorGeometry {
+            source: "tauri",
+            cursor_x: cursor.x,
+            cursor_y: cursor.y,
+            monitor_x: position.x,
+            monitor_y: position.y,
+            monitor_width: size.width as i32,
+            monitor_height: size.height as i32,
+            scale: monitor.scale_factor(),
+        }));
     }
 
     let fallback = window
@@ -248,14 +450,42 @@ fn cursor_monitor_geometry(
     Ok(fallback.map(|monitor| {
         let position = monitor.position();
         let size = monitor.size();
-        (
-            position.x,
-            position.y,
-            size.width as i32,
-            size.height as i32,
-            monitor.scale_factor(),
-        )
+        CursorMonitorGeometry {
+            source: "tauri-fallback",
+            cursor_x: cursor.x,
+            cursor_y: cursor.y,
+            monitor_x: position.x,
+            monitor_y: position.y,
+            monitor_width: size.width as i32,
+            monitor_height: size.height as i32,
+            scale: monitor.scale_factor(),
+        }
     }))
+}
+
+#[cfg(target_os = "macos")]
+fn macos_cursor_screen() -> Option<(f64, f64, u32, u32, f64)> {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSEvent, NSScreen};
+
+    let mtm = MainThreadMarker::new()?;
+    let cursor = NSEvent::mouseLocation();
+    for screen in NSScreen::screens(mtm) {
+        let frame = screen.frame();
+        let within_x = cursor.x >= frame.origin.x && cursor.x < frame.origin.x + frame.size.width;
+        let within_y = cursor.y >= frame.origin.y && cursor.y < frame.origin.y + frame.size.height;
+        if within_x && within_y {
+            let scale = screen.backingScaleFactor();
+            return Some((
+                cursor.x,
+                cursor.y,
+                (frame.size.width * scale).round() as u32,
+                (frame.size.height * scale).round() as u32,
+                scale,
+            ));
+        }
+    }
+    None
 }
 
 fn monitor_contains_cursor(
@@ -380,6 +610,7 @@ fn should_ignore_cursor_events(window: &WebviewWindow) -> Result<bool, String> {
 }
 
 #[cfg(target_os = "macos")]
+#[allow(deprecated, unexpected_cfgs)]
 fn setup_macos_panel(window: &WebviewWindow) {
     use tauri_nspanel::{
         cocoa::appkit::NSWindowCollectionBehavior, panel_delegate, WebviewWindowExt,
@@ -412,21 +643,41 @@ fn setup_macos_panel(window: &WebviewWindow) {
 
 #[cfg(test)]
 mod tests {
-    use super::{bottom_center_coordinates, monitor_contains_cursor};
+    use super::{
+        bottom_center_coordinates, monitor_contains_cursor, normalized_restore_size,
+        COMPACT_OVERLAY_HEIGHT, COMPACT_OVERLAY_WIDTH,
+    };
+    use tauri::PhysicalSize;
 
     #[test]
     fn dictation_overlay_is_centered_near_monitor_bottom() {
         assert_eq!(
-            bottom_center_coordinates(0, 0, 1512, 982, 320, 74, 56),
-            (596, 852)
+            bottom_center_coordinates(
+                0,
+                0,
+                1512,
+                982,
+                COMPACT_OVERLAY_WIDTH as i32,
+                COMPACT_OVERLAY_HEIGHT as i32,
+                56
+            ),
+            (566, 852)
         );
     }
 
     #[test]
     fn dictation_overlay_respects_monitor_origin() {
         assert_eq!(
-            bottom_center_coordinates(-1920, -120, 1920, 1080, 320, 74, 56),
-            (-1120, 830)
+            bottom_center_coordinates(
+                -1920,
+                -120,
+                1920,
+                1080,
+                COMPACT_OVERLAY_WIDTH as i32,
+                COMPACT_OVERLAY_HEIGHT as i32,
+                56
+            ),
+            (-1150, 830)
         );
     }
 
@@ -439,5 +690,25 @@ mod tests {
             -1920, -120, 1920, 1080, 300.0, 400.0
         ));
         assert!(monitor_contains_cursor(0, 0, 1512, 982, 300.0, 400.0));
+    }
+
+    #[test]
+    fn compact_snapshot_restores_to_collapsed_island_size() {
+        assert_eq!(
+            normalized_restore_size(PhysicalSize::new(380, 74), 1.0),
+            PhysicalSize::new(620, 74)
+        );
+        assert_eq!(
+            normalized_restore_size(PhysicalSize::new(760, 148), 2.0),
+            PhysicalSize::new(1240, 148)
+        );
+    }
+
+    #[test]
+    fn expanded_snapshot_size_is_preserved() {
+        assert_eq!(
+            normalized_restore_size(PhysicalSize::new(1880, 1240), 2.0),
+            PhysicalSize::new(1880, 1240)
+        );
     }
 }

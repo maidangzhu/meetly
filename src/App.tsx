@@ -31,7 +31,7 @@ import {
   supportedContextDocumentLabel,
 } from "./app/contextDocuments";
 import { questionKindLabel } from "./app/interviewLogic";
-import { safeInvoke } from "./app/platform";
+import { debugLog, safeInvoke } from "./app/platform";
 import type { AudioSource, MeetingPerspective, SessionKind } from "./app/types";
 import type { DictationViewState } from "./app/dictation/types";
 import { useDictation } from "./app/dictation/useDictation";
@@ -96,7 +96,7 @@ export function App() {
   const voiceAskVisible = voiceAskState.phase !== "idle";
   const overlayVisible = voiceAskVisible || dictationVisible;
   const voiceAskHasAnswer = voiceAskState.phase === "answered" || voiceAskState.phase === "error";
-  const overlayWidth = voiceAskVisible ? (voiceAskHasAnswer ? 480 : 340) : 320;
+  const overlayWidth = voiceAskVisible && voiceAskHasAnswer ? 480 : 380;
   const overlayHeight = voiceAskVisible ? (voiceAskHasAnswer ? 300 : 74) : 74;
 
   useEffect(() => {
@@ -104,6 +104,8 @@ export function App() {
       enabled: overlayVisible,
       width: overlayWidth,
       height: overlayHeight,
+    }).catch((error) => {
+      debugLog(`[overlay] resize failed message=${error instanceof Error ? error.message : String(error)}`);
     });
   }, [overlayHeight, overlayVisible, overlayWidth]);
 
@@ -347,7 +349,7 @@ function VoiceAskOverlay({
   if (isThinking) {
     return (
       <section
-        className="flex h-[54px] w-full select-none items-center justify-center rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.94)] px-4 shadow-[0_12px_32px_rgb(0_0_0_/_0.42)] backdrop-blur-2xl"
+        className="flex h-[54px] w-full select-none items-center justify-center rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.94)] px-4 backdrop-blur-2xl"
         aria-label="AI 正在思考"
         aria-live="polite"
       >
@@ -359,7 +361,7 @@ function VoiceAskOverlay({
   if (state.phase === "answered" || state.phase === "error") {
     return (
       <section
-        className="flex h-full w-full flex-col overflow-hidden rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.96)] shadow-[0_16px_42px_rgb(0_0_0_/_0.46)] backdrop-blur-2xl"
+        className="flex h-full w-full flex-col overflow-hidden rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.96)] backdrop-blur-2xl"
         aria-label="AI 回答"
         aria-live="polite"
       >
@@ -411,7 +413,7 @@ function VoiceAskOverlay({
 
   if (state.phase === "cancelled") {
     return (
-      <section className="flex h-[54px] w-full items-center justify-center rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.94)] px-4 shadow-[0_12px_32px_rgb(0_0_0_/_0.42)] backdrop-blur-2xl">
+      <section className="flex h-[54px] w-full items-center justify-center rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.94)] px-4 backdrop-blur-2xl">
         <span className="text-[13px] font-medium text-white/52">已取消</span>
       </section>
     );
@@ -419,7 +421,7 @@ function VoiceAskOverlay({
 
   return (
     <section
-      className="flex h-[54px] w-full select-none items-center gap-2 rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.94)] p-2 shadow-[0_12px_32px_rgb(0_0_0_/_0.42)] backdrop-blur-2xl"
+      className="flex h-[54px] w-full select-none items-center gap-2 rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.94)] p-2 backdrop-blur-2xl"
       aria-label="语音提问"
     >
       <button
@@ -468,7 +470,7 @@ function DictationBubble({
   if (isThinking) {
     return (
       <section
-        className="flex h-[54px] w-full select-none items-center justify-center rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.94)] px-4 shadow-[0_12px_32px_rgb(0_0_0_/_0.42)] backdrop-blur-2xl"
+        className="flex h-[54px] w-full select-none items-center justify-center rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.94)] px-4 backdrop-blur-2xl"
         aria-label="正在处理语音输入"
         aria-live="polite"
       >
@@ -480,7 +482,7 @@ function DictationBubble({
   if (isTerminal) {
     return (
       <section
-        className="flex h-[54px] w-full select-none items-center justify-center gap-2 rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.94)] px-4 shadow-[0_12px_32px_rgb(0_0_0_/_0.42)] backdrop-blur-2xl"
+        className="flex h-[54px] w-full select-none items-center justify-center gap-2 rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.94)] px-4 backdrop-blur-2xl"
         aria-label="语音输入结果"
         aria-live="polite"
       >
@@ -494,7 +496,7 @@ function DictationBubble({
 
   return (
     <section
-      className="flex h-[54px] w-full select-none items-center gap-2 rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.94)] p-2 shadow-[0_12px_32px_rgb(0_0_0_/_0.42)] backdrop-blur-2xl"
+      className="flex h-[54px] w-full select-none items-center gap-2 rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.94)] p-2 backdrop-blur-2xl"
       aria-label="语音输入"
     >
       <button
@@ -514,7 +516,7 @@ function DictationBubble({
         ) : (
           <span className="text-[12px] font-medium text-white/72">准备录音</span>
         )}
-        <span className="max-w-[170px] truncate text-[10px] text-white/38">
+        <span className="max-w-[220px] truncate text-[10px] text-white/38">
           {state.phase === "recording" ? "再次按 Fn + 空格即可转写" : state.message}
         </span>
       </div>

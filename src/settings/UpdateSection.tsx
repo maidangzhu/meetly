@@ -1,6 +1,6 @@
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 const PRIMARY_BUTTON =
   "rounded-lg bg-white/90 px-3 py-2 text-sm font-medium text-black transition-[background,transform] duration-150 hover:bg-white active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50";
@@ -59,10 +59,6 @@ export function UpdateSection() {
       setIsInstalling(false);
     }
   }, []);
-
-  useEffect(() => {
-    void checkForUpdates(true);
-  }, [checkForUpdates]);
 
   return (
     <section className="mb-6 rounded-xl border border-white/[0.08] bg-white/[0.04] p-4">

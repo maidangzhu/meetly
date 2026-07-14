@@ -2550,6 +2550,7 @@ dependencies = [
  "futures-util",
  "handy-keys",
  "hound",
+ "objc2",
  "objc2-app-kit",
  "pdf-extract",
  "reqwest 0.12.28",
