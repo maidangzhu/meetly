@@ -21,7 +21,9 @@
     "@tauri-apps/plugin-updater": "^2.10.1",
     "lucide-react": "^0.539.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.1",

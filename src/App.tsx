@@ -19,6 +19,8 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   CARD_SURFACE,
   DRAG_CURSOR,
@@ -86,7 +88,8 @@ export function App() {
         question: voiceAskPreviewPhase === "answered" ? "如何把一个复杂问题讲清楚？" : null,
         suggestion: voiceAskPreviewPhase === "answered"
           ? {
-              answer: "先给结论，再解释判断依据，最后用一个具体例子说明它如何落地。",
+              answer:
+                "## 核心结论\n\n先给结论，再解释判断依据，最后用一个具体例子说明它如何落地。\n\n- 一句话说清核心判断\n- 用 `Fn` 快速提问\n\n> 只保留真正支持结论的证据。",
               bullets: ["一句话说清核心判断", "只保留支持结论的关键证据", "用例子收尾"],
               clarifyingQuestion: null,
             }
@@ -389,9 +392,20 @@ function VoiceAskOverlay({
             <p className="m-0 text-[13px] leading-relaxed text-[#ff9ba8]">{state.message}</p>
           ) : (
             <>
-              <p className="m-0 whitespace-pre-wrap text-[14px] leading-relaxed text-white/88">
-                {state.suggestion?.answer}
-              </p>
+              <div className="voice-answer-markdown">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    a: ({ children, href }) => (
+                      <a href={href} target="_blank" rel="noreferrer">
+                        {children}
+                      </a>
+                    ),
+                  }}
+                >
+                  {state.suggestion?.answer ?? ""}
+                </ReactMarkdown>
+              </div>
               {state.suggestion && state.suggestion.bullets.length > 0 && (
                 <ul className="mt-3 grid gap-1.5 pl-4 text-[12px] leading-relaxed text-white/62">
                   {state.suggestion.bullets.map((bullet, index) => (
