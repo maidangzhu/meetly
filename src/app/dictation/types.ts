@@ -17,6 +17,7 @@ export type DictationPhase =
   | "transcribing"
   | "polishing"
   | "pasting"
+  | "paste_failed"
   | "completed"
   | "copied"
   | "cancelled"

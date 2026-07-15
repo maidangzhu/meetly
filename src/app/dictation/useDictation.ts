@@ -26,6 +26,7 @@ export function useDictation() {
   const startedAtRef = useRef(0);
   const pendingReleaseRef = useRef(false);
   const cancelledRef = useRef(false);
+  const outputInFlightRef = useRef(false);
   const resetTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -99,6 +100,7 @@ export function useDictation() {
     currentRunRef.current = runId;
     pendingReleaseRef.current = false;
     cancelledRef.current = false;
+    outputInFlightRef.current = false;
     dispatch({ type: "start", runId });
 
     try {
@@ -145,6 +147,57 @@ export function useDictation() {
       .catch((error) => {
         void handleRecordingError(runId, error);
       });
+  };
+
+  const deliverText = async (runId: string, finalText: string, autoPaste: boolean) => {
+    if (
+      outputInFlightRef.current ||
+      cancelledRef.current ||
+      currentRunRef.current !== runId
+    ) {
+      return;
+    }
+
+    outputInFlightRef.current = true;
+    dispatch({ type: "phase", runId, phase: "pasting", message: "正在写入输入框" });
+    const pasteStartedAt = performance.now();
+
+    try {
+      const output = await invoke<DictationOutputResult>("paste_dictation_text", {
+        runId,
+        text: finalText,
+        autoPaste,
+        keepResultInClipboard: settingsRef.current.keepResultInClipboard,
+      });
+      if (cancelledRef.current || currentRunRef.current !== runId) return;
+
+      debugLog(
+        `[dictation] output complete run=${runId} duration_ms=${Math.round(performance.now() - pasteStartedAt)} pasted=${output.pasted} copied=${output.copied}`
+      );
+
+      if (output.pasted || !autoPaste) {
+        debugLog(`[dictation] complete run=${runId} chars=${finalText.length}`);
+        currentRunRef.current = null;
+        dispatch({ type: "reset", runId });
+        return;
+      }
+
+      dispatch({
+        type: "paste_failed",
+        runId,
+        finalText,
+        message: output.message,
+      });
+    } catch (error) {
+      if (cancelledRef.current || currentRunRef.current !== runId) return;
+      const message = error instanceof Error ? error.message : String(error);
+      debugLog(
+        `[dictation] output failed run=${runId} duration_ms=${Math.round(performance.now() - pasteStartedAt)} reason=${message}`
+      );
+      dispatch({ type: "paste_failed", runId, finalText, message });
+    } finally {
+      outputInFlightRef.current = false;
+    }
   };
 
   const processRecording = async (runId: string, mimeType: string, blob: Blob) => {
@@ -195,43 +248,7 @@ export function useDictation() {
       }
 
       assertCurrent(runId);
-      dispatch({ type: "phase", runId, phase: "pasting", message: "正在写入输入框" });
-      const pasteStartedAt = performance.now();
-      try {
-        const output = await invoke<DictationOutputResult>("paste_dictation_text", {
-          runId,
-          text: finalText,
-          autoPaste: settingsRef.current.autoPasteEnabled,
-          keepResultInClipboard: settingsRef.current.keepResultInClipboard,
-        });
-        if (cancelledRef.current || currentRunRef.current !== runId) return;
-        dispatch({
-          type: "finished",
-          runId,
-          phase: output.pasted ? "completed" : "copied",
-          finalText,
-          message: output.pasted ? "已粘贴" : "已复制，请手动粘贴",
-        });
-        debugLog(
-          `[dictation] output complete run=${runId} duration_ms=${Math.round(performance.now() - pasteStartedAt)} pasted=${output.pasted} copied=${output.copied}`
-        );
-      } catch (error) {
-        if (cancelledRef.current || currentRunRef.current !== runId) return;
-        const message = error instanceof Error ? error.message : String(error);
-        debugLog(
-          `[dictation] output fallback run=${runId} duration_ms=${Math.round(performance.now() - pasteStartedAt)} reason=${message}`
-        );
-        dispatch({
-          type: "finished",
-          runId,
-          phase: "copied",
-          finalText,
-          message: message.includes("copied") ? "已复制，请手动粘贴" : `输出失败：${message}`,
-        });
-        await finishRun(runId);
-      }
-      debugLog(`[dictation] complete run=${runId} chars=${finalText.length}`);
-      scheduleReset(runId);
+      await deliverText(runId, finalText, settingsRef.current.autoPasteEnabled);
     } catch (error) {
       if (cancelledRef.current || currentRunRef.current !== runId) return;
       const message = error instanceof Error ? error.message : String(error);
@@ -290,5 +307,26 @@ export function useDictation() {
     stopRecorder(runId);
   };
 
-  return { state, audioLevel, cancel, finishRecording };
+  const retryPaste = () => {
+    const runId = currentRunRef.current;
+    if (!runId || state.phase !== "paste_failed" || !state.finalText) return;
+    void deliverText(runId, state.finalText, true);
+  };
+
+  const dismissFailure = () => {
+    const runId = currentRunRef.current;
+    if (state.phase !== "paste_failed") return;
+    if (!runId) {
+      dispatch({ type: "reset" });
+      return;
+    }
+
+    cancelledRef.current = true;
+    void finishRun(runId).finally(() => {
+      if (currentRunRef.current === runId) currentRunRef.current = null;
+      dispatch({ type: "reset", runId });
+    });
+  };
+
+  return { state, audioLevel, cancel, dismissFailure, finishRecording, retryPaste };
 }

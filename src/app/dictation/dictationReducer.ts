@@ -13,6 +13,7 @@ export type DictationAction =
   | { type: "phase"; runId: string; phase: DictationPhase; message?: string | null }
   | { type: "transcribed"; runId: string; rawText: string }
   | { type: "finished"; runId: string; phase: "completed" | "copied"; finalText: string; message: string }
+  | { type: "paste_failed"; runId: string; finalText: string; message: string }
   | { type: "failed"; runId: string; message: string }
   | { type: "cancelled"; runId: string }
   | { type: "blocked"; message: string }
@@ -63,6 +64,13 @@ export function dictationReducer(
       return {
         ...state,
         phase: action.phase,
+        finalText: action.finalText,
+        message: action.message,
+      };
+    case "paste_failed":
+      return {
+        ...state,
+        phase: "paste_failed",
         finalText: action.finalText,
         message: action.message,
       };

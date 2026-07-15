@@ -13,6 +13,7 @@ import {
   MonitorUp,
   MessageCircle,
   PenLine,
+  RotateCcw,
   Settings as SettingsIcon,
   Sparkles,
   UploadCloud,
@@ -277,7 +278,9 @@ export function App() {
             state={dictationState}
             audioLevel={previewPhase ? 0.68 : dictation.audioLevel}
             cancel={dictation.cancel}
+            dismissFailure={dictation.dismissFailure}
             finishRecording={dictation.finishRecording}
+            retryPaste={dictation.retryPaste}
           />
         </div>
       </main>
@@ -314,17 +317,8 @@ export function App() {
         onChange={(event) => void handleFileInputChange(event)}
       />
       <div className="relative h-full w-full p-2.5">
-        {ctx.isStealthOn && (
-          <div
-            className="pointer-events-none absolute inset-1 rounded-lg border border-dashed border-[#9cafb8]/45 shadow-[0_0_0_1px_rgb(156_175_184_/_0.08)]"
-            aria-hidden="true"
-          />
-        )}
-
         <div
-          className={`relative h-full w-full origin-top transition-transform duration-150 ${
-            ctx.isStealthOn ? "scale-[0.985]" : "scale-100"
-          }`}
+          className="relative h-full w-full"
           onDragEnter={handleDragOver}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -532,12 +526,16 @@ function DictationBubble({
   state,
   audioLevel,
   cancel,
+  dismissFailure,
   finishRecording,
+  retryPaste,
 }: {
   state: DictationViewState;
   audioLevel: number;
   cancel: () => void;
+  dismissFailure: () => void;
   finishRecording: () => void;
+  retryPaste: () => void;
 }) {
   const isThinking = ["transcribing", "polishing", "pasting"].includes(state.phase);
   const isTerminal = ["completed", "copied", "cancelled", "error", "blocked"].includes(
@@ -554,6 +552,41 @@ function DictationBubble({
       >
         <Loader2 className="h-3.5 w-3.5 animate-spin text-[#b9c6cc]" />
         <span className="text-[12px] font-medium text-white/62">{getDictationPhaseLabel(state.phase)}</span>
+      </section>
+    );
+  }
+
+  if (state.phase === "paste_failed") {
+    return (
+      <section
+        className="voice-surface flex h-12 w-full select-none items-center gap-2 p-2"
+        aria-label="语音输入粘贴失败"
+        aria-live="assertive"
+      >
+        <button
+          type="button"
+          className="voice-toolbar-button"
+          title="关闭"
+          aria-label="关闭粘贴失败提示"
+          onClick={dismissFailure}
+        >
+          <X />
+        </button>
+        <span
+          className="min-w-0 flex-1 truncate text-center text-[12px] font-medium text-[#e2a2a7]"
+          title={state.message ?? undefined}
+        >
+          已失败
+        </span>
+        <button
+          type="button"
+          className="voice-icon-button voice-icon-button--primary"
+          title="重试粘贴"
+          aria-label="重试粘贴"
+          onClick={retryPaste}
+        >
+          <RotateCcw />
+        </button>
       </section>
     );
   }
@@ -1096,9 +1129,11 @@ function getDictationPhaseLabel(phase: DictationViewState["phase"]) {
     case "pasting":
       return "写入中";
     case "completed":
-      return "已粘贴";
+      return "完成";
     case "copied":
-      return "已复制";
+      return "完成";
+    case "paste_failed":
+      return "已失败";
     case "cancelled":
       return "已取消";
     case "blocked":

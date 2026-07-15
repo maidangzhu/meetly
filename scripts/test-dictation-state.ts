@@ -45,7 +45,17 @@ const copied = dictationReducer(recording, {
 assert.equal(copied.phase, "copied");
 assert.equal(copied.finalText, "hello");
 
-const reset = dictationReducer(copied, { type: "reset", runId: "run-1" });
+const pasteFailed = dictationReducer(recording, {
+  type: "paste_failed",
+  runId: "run-1",
+  finalText: "hello",
+  message: "paste failed",
+});
+assert.equal(pasteFailed.phase, "paste_failed");
+assert.equal(pasteFailed.finalText, "hello");
+assert.equal(pasteFailed.message, "paste failed");
+
+const reset = dictationReducer(pasteFailed, { type: "reset", runId: "run-1" });
 assert.deepEqual(reset, INITIAL_DICTATION_STATE);
 
 const voiceStarted = voiceAskReducer(INITIAL_VOICE_ASK_STATE, {

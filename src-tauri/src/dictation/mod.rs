@@ -440,10 +440,19 @@ pub async fn paste_dictation_text(
         || state.is_active(&run_id, ActiveRunKind::Dictation),
     )
     .await;
-    if state.finish(&run_id, ActiveRunKind::Dictation) {
+    if should_finish_dictation_output(auto_paste, &result)
+        && state.finish(&run_id, ActiveRunKind::Dictation)
+    {
         unregister_escape(&app);
     }
     result
+}
+
+fn should_finish_dictation_output(
+    auto_paste: bool,
+    result: &Result<output::DictationOutputResult, String>,
+) -> bool {
+    matches!(result, Ok(output) if output.pasted || !auto_paste)
 }
 
 #[tauri::command]
@@ -545,5 +554,25 @@ mod tests {
         assert!(!state.finish("current", ActiveRunKind::VoiceAsk));
         assert!(state.finish("current", ActiveRunKind::Dictation));
         assert!(!state.is_active("current", ActiveRunKind::Dictation));
+    }
+
+    #[test]
+    fn paste_failure_keeps_run_available_for_retry() {
+        let copied = Ok(output::DictationOutputResult {
+            pasted: false,
+            copied: true,
+            message: "copied".to_string(),
+        });
+        let pasted = Ok(output::DictationOutputResult {
+            pasted: true,
+            copied: true,
+            message: "pasted".to_string(),
+        });
+        let failed = Err("paste failed".to_string());
+
+        assert!(!should_finish_dictation_output(true, &copied));
+        assert!(!should_finish_dictation_output(true, &failed));
+        assert!(should_finish_dictation_output(true, &pasted));
+        assert!(should_finish_dictation_output(false, &copied));
     }
 }
