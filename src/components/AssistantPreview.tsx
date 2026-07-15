@@ -51,14 +51,14 @@ export function AssistantPreview({
   prefetchStatus,
 }: AssistantPreviewProps) {
   return (
-    <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_320px] gap-3 overflow-hidden">
-      <div className="flex min-h-0 flex-col">
+    <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_300px] divide-x divide-white/[0.08] overflow-hidden">
+      <div className="flex min-h-0 flex-col pr-4">
         {autoAssistHint && (
-          <div className="mb-3 shrink-0 rounded-xl border border-[#38d879]/20 bg-[#38d879]/10 p-3.5">
-            <p className="m-0 text-[11px] text-[#baf8cf]">
+          <div className="mb-3 shrink-0 border-l-2 border-[#c17f59] bg-[#c17f59]/8 px-3 py-2.5">
+            <p className="m-0 text-[11px] text-[#d0a083]">
               {questionKindLabel(autoAssistHint.candidate.kind)} · {prefetchStatusLabel(prefetchStatus)}
             </p>
-            <p className="mt-2 text-[13px] leading-normal text-white/80">
+            <p className="mt-1.5 text-[13px] leading-normal text-white/78">
               {autoAssistHint.candidate.text}
             </p>
           </div>
@@ -99,13 +99,13 @@ function ContextDocumentsCard({ contextDocuments }: { contextDocuments: ContextD
   }
 
   return (
-    <div className="mb-3 rounded-xl border border-white/[0.08] bg-white/[0.045] p-3">
-      <p className="m-0 text-[11px] text-white/60">资料上下文</p>
-      <div className="mt-2 flex flex-wrap gap-1.5">
+    <div className="mb-3 flex min-h-9 items-center gap-3 border-y border-white/[0.07] py-2">
+      <p className="m-0 shrink-0 text-[11px] text-white/38">资料</p>
+      <div className="flex min-w-0 flex-1 flex-wrap gap-x-3 gap-y-1">
         {contextDocuments.map((document) => (
           <span
             key={document.id}
-            className="inline-flex h-7 max-w-[180px] items-center rounded-md bg-black/[0.16] px-2 text-[12px] text-white/62"
+            className="inline-flex max-w-[180px] items-center text-[12px] text-white/56"
             title={document.name}
           >
             <span className="truncate">{document.name}</span>
@@ -130,16 +130,17 @@ function SuggestionCard({
   isAsking,
 }: Pick<AssistantPreviewProps, "assistantDraft" | "assistantError" | "assistantSuggestion" | "isAsking">) {
   return (
-    <div className="mb-3 flex max-h-[230px] min-h-[132px] flex-col overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.05] p-3.5">
-      <p className="m-0 shrink-0 text-[11px] text-white/60">建议</p>
+    <section className="mb-3 flex max-h-[220px] min-h-[122px] flex-col overflow-hidden border-b border-white/[0.08] pb-3">
+      <div className="flex shrink-0 items-center justify-between">
+        <p className="section-title">建议</p>
+        {isAsking && <Loader2 className="h-3.5 w-3.5 animate-spin text-[#b9c6cc]" />}
+      </div>
       <div className="mt-2 min-h-0 flex-1 overflow-auto overscroll-contain pr-1">
         {isAsking ? (
           assistantDraft ? (
             <p className="m-0 whitespace-pre-wrap text-[13px] leading-normal text-white/90">{assistantDraft}</p>
           ) : (
-            <p className="m-0 flex items-center gap-2 text-[13px] leading-normal text-white/60">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> 正在生成建议...
-            </p>
+            <p className="m-0 text-[13px] leading-normal text-white/46">正在组织建议...</p>
           )
         ) : assistantError ? (
           <p className="m-0 text-[13px] leading-normal text-[#ff5c70]">{assistantError}</p>
@@ -160,12 +161,10 @@ function SuggestionCard({
             )}
           </>
         ) : (
-          <p className="m-0 text-[13px] leading-normal text-white/50">
-            按 Enter 根据从开始到现在的面试/对话转写生成建议。右侧场边教练会在识别到问题时给短提示。
-          </p>
+          <p className="m-0 text-[13px] leading-normal text-white/42">需要时，建议会出现在这里。</p>
         )}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -183,9 +182,9 @@ function CoachCard({
   }, [coachMessages.length, coachDraft?.text, coachDraft?.toolTraces.length]);
 
   return (
-    <aside className="flex min-h-0 flex-col rounded-xl border border-white/[0.08] bg-white/[0.05] p-3.5">
+    <aside className="flex min-h-0 flex-col pl-4">
       <div className="flex shrink-0 items-center justify-between">
-        <p className="m-0 text-[11px] text-white/60">场边教练</p>
+        <p className="section-title">主动建议</p>
         {coachActivity ? (
           <CoachActivityPill activity={coachActivity} />
         ) : isCoachThinking && !coachDraft ? (
@@ -194,25 +193,25 @@ function CoachCard({
       </div>
       <ul
         ref={scrollRef}
-        className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-auto overscroll-contain pr-1"
+        className="mt-2 flex min-h-0 flex-1 flex-col overflow-auto overscroll-contain pr-1"
         data-testid="coach-scroll"
         onScroll={(event) => updateFollowState(event, shouldFollowRef)}
       >
         {coachMessages.length === 0 && !coachDraft && (
-          <li className="text-[13px] leading-normal text-white/45">
-            开始会话后，关键时刻会给你一句能直接接上的提醒。
+          <li className="border-t border-white/[0.07] py-3 text-[13px] leading-normal text-white/42">
+            关键时刻的提醒会按时间顺序出现在这里。
           </li>
         )}
         {coachMessages.map((message) => (
-          <li key={message.id} className="rounded-lg bg-black/15 px-2.5 py-2">
+          <li key={message.id} className="border-t border-white/[0.07] py-3">
             <p className="m-0 text-[11px] text-white/40">{coachTriggerLabel(message.trigger)}</p>
             <CoachToolTraceList traces={message.toolTraces} />
             <p className="mt-1 whitespace-pre-wrap text-[13px] leading-normal text-white/82">{message.text}</p>
           </li>
         ))}
         {coachDraft && (
-          <li className="rounded-lg bg-[#38d879]/10 px-2.5 py-2">
-            <p className="m-0 flex items-center gap-1.5 text-[11px] text-[#baf8cf]">
+          <li className="border-l-2 border-[#c17f59] bg-[#c17f59]/8 px-3 py-2.5">
+            <p className="m-0 flex items-center gap-1.5 text-[11px] text-[#d0a083]">
               <Loader2 className="h-3 w-3 animate-spin" />
               {coachActivity?.label ?? coachTriggerLabel(coachDraft.trigger)}
             </p>
@@ -236,11 +235,11 @@ function CoachToolTraceList({ traces }: { traces: CoachToolTrace[] }) {
   }
 
   return (
-    <div className="mt-2 flex flex-col gap-1.5">
+    <div className="mt-2 border-l border-white/[0.09] pl-2.5">
       {traces.map((trace) => (
         <div
           key={trace.id}
-          className="rounded-md border border-white/[0.08] bg-black/[0.16] px-2 py-1.5"
+          className="border-t border-white/[0.07] py-2 first:border-t-0"
         >
           <div className="flex items-center justify-between gap-2">
             <p className="m-0 flex min-w-0 items-center gap-1.5 text-[11px] text-white/55">
@@ -255,7 +254,7 @@ function CoachToolTraceList({ traces }: { traces: CoachToolTrace[] }) {
             <p className="mt-1 truncate text-[11px] text-white/42">输入：{trace.query}</p>
           )}
           {trace.content && (
-            <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap rounded bg-white/[0.04] p-1.5 text-[11px] leading-normal text-white/56">
+            <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap border-l border-white/[0.08] pl-2 text-[11px] leading-normal text-white/52">
               {trace.content}
             </pre>
           )}
@@ -272,7 +271,7 @@ function toolTraceStatusLabel(status: CoachToolTrace["status"]) {
 }
 
 function toolTraceStatusClass(status: CoachToolTrace["status"]) {
-  if (status === "running") return "text-[#baf8cf]";
+  if (status === "running") return "text-[#d0a083]";
   if (status === "error") return "text-[#ff7a8a]";
   return "text-white/45";
 }
@@ -287,7 +286,7 @@ function CoachActivityPill({ activity }: { activity: CoachActivity }) {
   const isSpinning = activity.phase === "thinking" || activity.phase === "tool";
 
   return (
-    <span className="inline-flex h-6 max-w-[180px] items-center gap-1.5 rounded-md border border-[#38d879]/20 bg-[#38d879]/10 px-2 text-[11px] text-[#baf8cf]">
+    <span className="inline-flex h-6 max-w-[180px] items-center gap-1.5 border-l-2 border-[#c17f59] pl-2 text-[11px] text-[#d0a083]">
       <Icon className={`h-3 w-3 shrink-0 ${isSpinning ? "animate-pulse" : ""}`} />
       <span className="min-w-0 truncate">{activity.label}</span>
     </span>
@@ -313,12 +312,12 @@ function TranscriptCard({
   }, [partialTranscript?.text, transcriptHistory.length]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.05] p-3.5">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex shrink-0 items-center justify-between gap-2">
-        <p className="m-0 text-[11px] text-white/60">最近转写</p>
-        <span className={`inline-flex h-6 max-w-[140px] items-center gap-1.5 rounded-md px-2 text-[11px] ${status.className}`}>
+        <p className="section-title">转写</p>
+        <span className={`inline-flex h-6 max-w-[140px] items-center gap-1.5 border-l-2 pl-2 text-[11px] ${status.className}`}>
           {status.live && (
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current shadow-[0_0_0_0_rgb(56_216_121_/_0.30)] [animation:listening-dot-pulse_1.4s_infinite]" />
+            <span className="h-3 w-[2px] shrink-0 bg-current opacity-70" />
           )}
           <span className="min-w-0 truncate">{status.label}</span>
         </span>
@@ -330,30 +329,29 @@ function TranscriptCard({
       ) : (
         <ul
           ref={scrollRef}
-          className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-auto overscroll-contain pr-1"
+          className="mt-2 flex min-h-0 flex-1 flex-col overflow-auto overscroll-contain pr-1"
           data-testid="transcript-scroll"
           onScroll={(event) => updateFollowState(event, shouldFollowRef)}
         >
           {transcriptHistory.map((segment) => (
-            <li key={segment.id} className="rounded-lg bg-black/[0.12] px-2.5 py-2 text-[13px] leading-normal text-white/78">
+            <li key={segment.id} className="border-t border-white/[0.07] py-2.5 text-[13px] leading-normal text-white/72 first:border-t-0">
               {segment.text}
             </li>
           ))}
           {partialTranscript && (
-            <li className="rounded-lg border border-[#38d879]/25 bg-[#38d879]/10 px-3 py-2 shadow-[0_0_18px_rgb(56_216_121_/_0.08)] [animation:live-transcript-glow_1.6s_ease-in-out_infinite]">
-              <p className="m-0 flex items-center gap-1.5 text-[11px] text-[#baf8cf]">
-                <span className="h-1.5 w-1.5 rounded-full bg-[#38d879] shadow-[0_0_0_0_rgb(56_216_121_/_0.42)] [animation:listening-dot-pulse_1.4s_infinite]" />
+            <li className="border-l-2 border-[#c17f59] bg-[#c17f59]/8 px-3 py-2.5">
+              <p className="m-0 flex items-center gap-1.5 text-[11px] text-[#d0a083]">
                 实时转写
               </p>
               <p className="mt-1 whitespace-pre-wrap text-[14px] leading-normal text-white/90">
                 {partialTranscript.text}
-                <span className="ml-0.5 inline-block h-4 w-[2px] translate-y-[2px] rounded-full bg-[#baf8cf] [animation:transcript-caret-blink_1s_steps(2,start)_infinite]" />
+                <span className="ml-0.5 inline-block h-4 w-[2px] translate-y-[2px] bg-[#d0a083] [animation:transcript-caret-blink_1s_steps(2,start)_infinite]" />
               </p>
             </li>
           )}
         </ul>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -381,7 +379,7 @@ function getTranscriptStatus({
 }: Pick<AssistantPreviewProps, "audioLevel" | "isListening" | "partialTranscript" | "transcriptError">) {
   if (transcriptError) {
     return {
-      className: "border border-[#ff5c70]/20 bg-[#ff5c70]/10 text-[#ff9aaa]",
+      className: "border-[#ff7a8a] text-[#ff9aaa]",
       label: "转写异常",
       live: false,
     };
@@ -389,7 +387,7 @@ function getTranscriptStatus({
 
   if (partialTranscript) {
     return {
-      className: "border border-[#38d879]/20 bg-[#38d879]/10 text-[#baf8cf]",
+      className: "border-[#c17f59] text-[#d0a083]",
       label: "转写中",
       live: true,
     };
@@ -397,15 +395,15 @@ function getTranscriptStatus({
 
   if (isListening && audioLevel > 0.015) {
     return {
-      className: "border border-white/10 bg-white/[0.06] text-white/70",
+      className: "border-[#9cafb8] text-[#b9c6cc]",
       label: "正在听",
       live: true,
     };
   }
 
   return {
-    className: "border border-white/10 bg-white/[0.04] text-white/45",
-    label: isListening ? "等待语音" : "待机",
+    className: "border-white/24 text-white/42",
+    label: isListening ? "等待语音" : "未开始",
     live: false,
   };
 }

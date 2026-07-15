@@ -1,15 +1,36 @@
-export function AudioBars({ level }: { level: number }) {
-  const normalized = Math.max(0, Math.min(1, level));
+type AudioBarsProps = {
+  level: number;
+  active?: boolean;
+  tone?: "cool" | "warm";
+  variant?: "island" | "compact";
+};
+
+const COMPACT_SHAPE = [0.28, 0.44, 0.64, 0.84, 1, 0.84, 0.64, 0.44, 0.28];
+const ISLAND_SHAPE = [0.24, 0.36, 0.52, 0.72, 0.9, 1, 0.9, 0.72, 0.52, 0.36, 0.24];
+
+export function AudioBars({
+  level,
+  active = true,
+  tone = "cool",
+  variant = "island",
+}: AudioBarsProps) {
+  const normalized = active ? Math.max(0.08, Math.min(1, level)) : 0;
+  const isCompact = variant === "compact";
+  const shape = isCompact ? COMPACT_SHAPE : ISLAND_SHAPE;
+  const maxHeight = isCompact ? 18 : 20;
 
   return (
-    <div className="flex h-[26px] w-[116px] shrink-0 items-center gap-1 overflow-hidden" aria-hidden="true">
-      {Array.from({ length: 18 }).map((_, index) => (
+    <div
+      className={`voice-waveform voice-waveform--${variant} voice-waveform--${tone}`}
+      aria-hidden="true"
+    >
+      {shape.map((weight, index) => (
         <span
           key={index}
-          className="w-[3px] rounded-full bg-white/70 transition-[height,opacity] duration-75"
+          className="voice-waveform__bar"
           style={{
-            height: `${4 + Math.min(22, normalized * 30 * (0.45 + ((index % 6) + 1) / 9))}px`,
-            opacity: 0.35 + normalized * 0.6,
+            height: `${2 + normalized * weight * maxHeight}px`,
+            opacity: active ? 0.38 + normalized * 0.54 : 0.22,
           }}
         />
       ))}

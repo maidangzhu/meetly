@@ -1,7 +1,7 @@
 {
   "name": "meetly",
   "private": true,
-  "version": "0.1.6",
+  "version": "0.1.7",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420",
@@ -11,6 +11,7 @@
     "test:wake": "tsx scripts/replay-coach-wake-policy.ts",
     "test:coach-log": "tsx scripts/replay-latest-coach-log.ts",
     "test:dictation": "tsx scripts/test-dictation-state.ts",
+    "package:macos:test": "CI=true tauri build --bundles dmg --no-sign --config src-tauri/tauri.test.conf.json && bash scripts/verify-macos-test-bundle.sh",
     "tauri": "tauri"
   },
   "dependencies": {

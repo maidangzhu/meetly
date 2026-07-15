@@ -9,10 +9,8 @@ export type OnboardingStatus = {
   hasLlmKey: boolean;
 };
 
-const PRIMARY_BUTTON =
-  "rounded-lg bg-white/90 px-3 py-2 text-sm font-medium text-black transition-[background,transform] duration-150 hover:bg-white active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50";
-const SECONDARY_BUTTON =
-  "rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white/80 transition-[background,transform] duration-150 hover:bg-white/[0.12] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50";
+const PRIMARY_BUTTON = "ui-primary-button";
+const SECONDARY_BUTTON = "ui-secondary-button";
 
 export function OnboardingPanel({
   onCompleted,
@@ -39,24 +37,22 @@ export function OnboardingPanel({
 
   if (step === "welcome") {
     return (
-      <section className="mb-6 flex min-h-[430px] flex-col rounded-xl border border-white/[0.08] bg-white/[0.04] p-5">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#38d879]/12 text-[#7ff0a0] [&_svg]:h-5 [&_svg]:w-5">
+      <section className="mb-5 flex min-h-[390px] flex-col border-y border-white/[0.08] py-5">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#c17f59]/25 bg-[#c17f59]/10 text-[#d0a083] [&_svg]:h-4 [&_svg]:w-4">
           <Sparkles />
         </div>
-        <div className="mt-7 max-w-[360px]">
-          <p className="m-0 text-[11px] font-medium uppercase tracking-[0.12em] text-[#38d879]">
-            Welcome to Meetly
-          </p>
-          <h2 className="m-0 mt-2 text-2xl font-semibold leading-tight">面试时放在屏幕顶部的实时辅助。</h2>
-          <p className="mt-3 mb-0 text-sm leading-relaxed text-white/55">
-            Meetly 会在本机持续听取你的对话，把小段音频转成文字，并在你按 Enter 或场边教练发现关键问题时给出短建议。
+        <div className="mt-6 max-w-[430px]">
+          <p className="section-label">Welcome to Meetly</p>
+          <h2 className="m-0 mt-2 text-xl font-semibold leading-tight text-white/92">一个始终在手边的语音入口。</h2>
+          <p className="mt-3 mb-0 text-sm leading-relaxed text-white/52">
+            Meetly 将语音输入、实时上下文与主动式 AI 放在同一个本地桌面入口里。
           </p>
         </div>
 
-        <div className="mt-6 grid gap-2.5 text-sm text-white/62">
-          <WelcomeLine>进入后主界面不是大窗口，而是屏幕顶部的悬浮岛。</WelcomeLine>
-          <WelcomeLine>点击悬浮岛左侧按钮开始面试监听，录音不会因为按 Enter 中断。</WelcomeLine>
-          <WelcomeLine>设置页随时可以从悬浮岛右侧齿轮重新打开。</WelcomeLine>
+        <div className="mt-6 border-t border-white/[0.07] text-sm text-white/58">
+          <WelcomeLine>顶部浮岛保持安静，只在需要时展开。</WelcomeLine>
+          <WelcomeLine>语音输入、Ask 与持续会话彼此独立。</WelcomeLine>
+          <WelcomeLine>模型和数据保留在你的本地配置边界内。</WelcomeLine>
         </div>
 
         <div className="mt-auto flex justify-end pt-6">
@@ -70,18 +66,16 @@ export function OnboardingPanel({
   }
 
   return (
-    <section className="mb-6 rounded-xl border border-white/[0.08] bg-white/[0.04] p-4">
+    <section className="mb-5 border-y border-white/[0.08] py-5">
       <div className="mb-5">
-        <p className="m-0 text-[11px] font-medium uppercase tracking-[0.12em] text-[#38d879]">
-          Setup
-        </p>
+        <p className="section-label">Setup</p>
         <h2 className="m-0 mt-1 text-lg font-semibold">开通权限并连接模型</h2>
         <p className="mt-1 mb-0 text-xs leading-relaxed text-white/52">
           完成后点击进入，设置窗口会关闭，只保留屏幕顶部的悬浮岛。首次开始监听时，macOS 会弹出麦克风授权。
         </p>
       </div>
 
-      <div className="grid gap-3">
+      <div className="border-t border-white/[0.07]">
         <SetupStep
           icon={<Mic />}
           title="打开麦克风权限"
@@ -148,8 +142,8 @@ export function OnboardingPanel({
 
 function WelcomeLine({ children }: { children: ReactNode }) {
   return (
-    <div className="flex items-start gap-2.5 rounded-lg border border-white/[0.07] bg-white/[0.035] p-3">
-      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[#38d879]" />
+    <div className="flex items-start gap-2.5 border-b border-white/[0.07] py-3">
+      <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#9cafb8]" />
       <p className="m-0 leading-relaxed">{children}</p>
     </div>
   );
@@ -169,14 +163,14 @@ function SetupStep({
   title: string;
 }) {
   return (
-    <div className="flex gap-3 rounded-lg border border-white/[0.08] bg-white/[0.045] p-3">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/[0.08] text-white/75 [&_svg]:h-4 [&_svg]:w-4">
+    <div className="flex gap-3 border-b border-white/[0.07] py-3.5">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/[0.045] text-white/64 [&_svg]:h-4 [&_svg]:w-4">
         {icon}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <h3 className="m-0 text-sm font-semibold">{title}</h3>
-          {done && <CheckCircle2 className="h-3.5 w-3.5 text-[#38d879]" />}
+          {done && <CheckCircle2 className="h-3.5 w-3.5 text-[#9cafb8]" />}
         </div>
         <p className="mt-1 mb-2 text-xs leading-relaxed text-white/50">{description}</p>
         {action}

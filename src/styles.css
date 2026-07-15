@@ -25,6 +25,320 @@ button {
   font: inherit;
 }
 
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid rgb(193 127 89 / 0.58);
+  outline-offset: 2px;
+}
+
+.app-panel {
+  border: 1px solid rgb(255 255 255 / 0.09);
+  border-radius: 8px;
+  background: rgb(19 21 22 / 0.96);
+  box-shadow: 0 16px 42px rgb(0 0 0 / 0.28);
+  backdrop-filter: blur(24px);
+}
+
+.app-panel-header {
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  background: rgb(255 255 255 / 0.018);
+}
+
+.section-label {
+  margin: 0;
+  color: rgb(255 255 255 / 0.42);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.section-title {
+  margin: 0;
+  color: rgb(255 255 255 / 0.9);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.ui-primary-button,
+.ui-secondary-button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    transform 150ms ease;
+}
+
+.ui-primary-button {
+  border: 1px solid rgb(255 255 255 / 0.06);
+  background: #c17f59;
+  color: #211712;
+}
+
+.ui-primary-button:hover {
+  background: #cf8d66;
+}
+
+.ui-secondary-button {
+  border: 1px solid rgb(255 255 255 / 0.11);
+  background: rgb(255 255 255 / 0.035);
+  color: rgb(255 255 255 / 0.72);
+}
+
+.ui-secondary-button:hover {
+  border-color: rgb(255 255 255 / 0.17);
+  background: rgb(255 255 255 / 0.07);
+  color: rgb(255 255 255 / 0.9);
+}
+
+.ui-primary-button:active,
+.ui-secondary-button:active {
+  transform: scale(0.98);
+}
+
+.ui-primary-button:disabled,
+.ui-secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.ui-field {
+  width: 100%;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 6px;
+  background: rgb(0 0 0 / 0.16);
+  padding: 8px 10px;
+  color: rgb(255 255 255 / 0.88);
+  font-size: 13px;
+  outline: none;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease;
+}
+
+.ui-field:focus {
+  border-color: rgb(193 127 89 / 0.62);
+  background: rgb(0 0 0 / 0.22);
+}
+
+.ui-field::placeholder {
+  color: rgb(255 255 255 / 0.25);
+}
+
+.settings-stack {
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.settings-section {
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  padding: 18px 0;
+}
+
+.settings-row {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid rgb(255 255 255 / 0.065);
+  padding: 9px 0;
+}
+
+.settings-row:last-child {
+  border-bottom: 1px solid rgb(255 255 255 / 0.065);
+}
+
+.ui-switch {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  flex: 0 0 auto;
+  appearance: none;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.08);
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease;
+}
+
+.ui-switch::after {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.7);
+  content: "";
+  transition:
+    left 150ms ease,
+    background-color 150ms ease;
+}
+
+.ui-switch:checked {
+  border-color: rgb(193 127 89 / 0.56);
+  background: rgb(193 127 89 / 0.26);
+}
+
+.ui-switch:checked::after {
+  left: 17px;
+  background: #d9a082;
+}
+
+.voice-surface {
+  border: 1px solid rgb(255 255 255 / 0.11);
+  border-radius: 8px;
+  background: rgb(21 23 24 / 0.94);
+  box-shadow:
+    0 8px 22px rgb(0 0 0 / 0.2),
+    inset 0 1px 0 rgb(255 255 255 / 0.035);
+  backdrop-filter: blur(22px);
+}
+
+.voice-icon-button,
+.voice-icon-status,
+.voice-launch-button,
+.voice-toolbar-button {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+}
+
+.voice-icon-button,
+.voice-launch-button,
+.voice-toolbar-button {
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    transform 150ms ease;
+}
+
+.voice-icon-button:active,
+.voice-launch-button:active,
+.voice-toolbar-button:active {
+  transform: scale(0.96);
+}
+
+.voice-icon-button svg,
+.voice-icon-status svg,
+.voice-launch-button svg,
+.voice-toolbar-button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.voice-icon-button {
+  background: rgb(255 255 255 / 0.055);
+  color: rgb(255 255 255 / 0.52);
+}
+
+.voice-icon-button:hover {
+  background: rgb(255 255 255 / 0.1);
+  color: rgb(255 255 255 / 0.82);
+}
+
+.voice-icon-button--danger:hover {
+  background: rgb(181 83 91 / 0.16);
+  color: #e2a2a7;
+}
+
+.voice-icon-button--primary {
+  background: #c17f59;
+  color: #1f1713;
+}
+
+.voice-icon-button--primary:hover {
+  background: #cf8d66;
+}
+
+.voice-icon-status {
+  color: #c99575;
+}
+
+.voice-launch-button {
+  background: #c17f59;
+  color: #1f1713;
+}
+
+.voice-launch-button:hover {
+  background: #cf8d66;
+}
+
+.voice-launch-button--active {
+  background: rgb(193 127 89 / 0.16);
+  color: #d9a082;
+}
+
+.voice-toolbar-button {
+  background: transparent;
+  color: rgb(255 255 255 / 0.5);
+}
+
+.voice-toolbar-button:hover {
+  background: rgb(255 255 255 / 0.08);
+  color: rgb(255 255 255 / 0.8);
+}
+
+.voice-toolbar-button--active {
+  background: rgb(42 59 76 / 0.72);
+  color: #c1d0d7;
+}
+
+.voice-waveform {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.voice-waveform--compact {
+  width: 96px;
+  height: 24px;
+  gap: 4px;
+}
+
+.voice-waveform--island {
+  width: 92px;
+  height: 26px;
+  gap: 4px;
+}
+
+.voice-waveform__bar {
+  width: 2px;
+  min-height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  transform-origin: center;
+  transition:
+    height 90ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 120ms ease;
+}
+
+.voice-waveform--cool {
+  color: #b9c6cc;
+}
+
+.voice-waveform--warm {
+  color: #d0a083;
+}
+
 .voice-answer-markdown {
   color: rgb(255 255 255 / 0.88);
   font-size: 14px;
@@ -86,7 +400,7 @@ button {
 }
 
 .voice-answer-markdown a {
-  color: #64e594;
+  color: #d0a083;
   text-decoration: underline;
   text-underline-offset: 2px;
 }

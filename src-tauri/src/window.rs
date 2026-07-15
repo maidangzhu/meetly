@@ -8,8 +8,8 @@ const EXPANDED_WIDTH: f64 = 920.0;
 const COLLAPSED_HEIGHT: f64 = 54.0;
 const OUTER_GUTTER: f64 = 10.0;
 const TOP_OFFSET: i32 = 54;
-const COMPACT_OVERLAY_WIDTH: f64 = 380.0;
-const COMPACT_OVERLAY_HEIGHT: f64 = 74.0;
+const COMPACT_OVERLAY_WIDTH: f64 = 320.0;
+const COMPACT_OVERLAY_HEIGHT: f64 = 68.0;
 const DICTATION_BOTTOM_OFFSET: f64 = 56.0;
 
 #[derive(Debug, Clone)]
@@ -661,7 +661,7 @@ mod tests {
                 COMPACT_OVERLAY_HEIGHT as i32,
                 56
             ),
-            (566, 852)
+            (596, 858)
         );
     }
 
@@ -677,7 +677,7 @@ mod tests {
                 COMPACT_OVERLAY_HEIGHT as i32,
                 56
             ),
-            (-1150, 830)
+            (-1120, 836)
         );
     }
 
@@ -695,7 +695,7 @@ mod tests {
     #[test]
     fn compact_snapshot_restores_to_collapsed_island_size() {
         assert_eq!(
-            normalized_restore_size(PhysicalSize::new(380, 74), 1.0),
+            normalized_restore_size(PhysicalSize::new(320, 68), 1.0),
             PhysicalSize::new(620, 74)
         );
         assert_eq!(

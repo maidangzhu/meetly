@@ -2,10 +2,8 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
 import { useCallback, useState } from "react";
 
-const PRIMARY_BUTTON =
-  "rounded-lg bg-white/90 px-3 py-2 text-sm font-medium text-black transition-[background,transform] duration-150 hover:bg-white active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50";
-const SECONDARY_BUTTON =
-  "rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white/80 transition-[background,transform] duration-150 hover:bg-white/[0.12] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50";
+const PRIMARY_BUTTON = "ui-primary-button";
+const SECONDARY_BUTTON = "ui-secondary-button";
 
 export function UpdateSection() {
   const [isChecking, setIsChecking] = useState(false);
@@ -61,10 +59,10 @@ export function UpdateSection() {
   }, []);
 
   return (
-    <section className="mb-6 rounded-xl border border-white/[0.08] bg-white/[0.04] p-4">
+    <section className="settings-section">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <h2 className="m-0 text-sm font-semibold">Updates</h2>
+          <h2 className="section-title">Updates</h2>
           <p className="mt-1 mb-0 text-xs text-white/50">
             从 GitHub Release 检查已签名的新版本。
           </p>

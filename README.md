@@ -131,7 +131,9 @@ Agent runtime 会处理优先级、串行队列、冷却时间、重复证据和
 
 从 [GitHub Releases](https://github.com/maidangzhu/meetly/releases/latest) 下载最新的 `Meetly_*_aarch64.dmg`，将 Meetly 拖入 Applications。
 
-当前公开测试包可能使用 ad-hoc 签名且尚未 notarize。如果确认包来自本仓库，但 macOS 仍阻止打开，可以移除下载隔离标记：
+未使用 Developer ID 的测试包采用与 Percent `v0.1.8` 测试包相同的原始 Tauri 打包方式：只保留 linker ad-hoc 签名，不额外生成 hardened-runtime 的完整 app-bundle ad-hoc 签名。这样不会再生成当前 Meetly 公测包所使用的“完整 ad-hoc bundle 签名但未公证”组合。
+
+测试包仍未经过 Apple notarization，macOS 可能显示“无法验证开发者”。如果确认包来自本仓库，但系统仍阻止打开，可以移除下载隔离标记：
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Meetly.app
@@ -269,10 +271,12 @@ cargo check --manifest-path src-tauri/Cargo.toml
 ## 打包与发布
 
 ```bash
-pnpm tauri build
+pnpm package:macos:test
 ```
 
-没有 Apple Developer ID 和 updater 私钥时，本地只能生成适合测试的 ad-hoc `.app` / `.dmg`。完整发布流程在 [`.github/workflows/release-macos.yml`](./.github/workflows/release-macos.yml)，需要：
+这个命令会在 CI 模式下跳过易受 Finder 当前窗口影响的 DMG 美化步骤，使用 `--no-sign` 直接生成 DMG，并自动验证产物与 Percent 包一致：只有 linker 签名，没有 hardened runtime、sealed resources 或完整 `_CodeSignature`。测试配置同时关闭 updater artifacts，因此不需要 Tauri updater 私钥。
+
+没有 Apple Developer ID 时，这个 DMG 只适合内部测试。完整发布流程仍在 [`.github/workflows/release-macos.yml`](./.github/workflows/release-macos.yml)，并继续使用正式 entitlements、Developer ID、notarization 和 updater 签名，需要：
 
 - Developer ID Application 证书；
 - Apple notarization 凭据；

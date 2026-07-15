@@ -30,13 +30,10 @@ type AudioStatus = {
   message: string | null;
 };
 
-const FIELD =
-  "w-full rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-sm text-[#f5f5f5] placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-white/20";
+const FIELD = "ui-field";
 const LABEL = "mb-1 block text-xs font-medium text-white/60";
-const PRIMARY_BUTTON =
-  "rounded-lg bg-white/90 px-3 py-2 text-sm font-medium text-black transition-[background,transform] duration-150 hover:bg-white active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50";
-const SECONDARY_BUTTON =
-  "rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white/80 transition-[background,transform] duration-150 hover:bg-white/[0.12] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50";
+const PRIMARY_BUTTON = "ui-primary-button";
+const SECONDARY_BUTTON = "ui-secondary-button";
 
 function useProviderSection(kind: ProviderKind) {
   const [baseUrl, setBaseUrl] = useState("");
@@ -137,30 +134,38 @@ export function ProviderSection({
   };
 
   return (
-    <section className="mb-6 rounded-xl border border-white/[0.08] bg-white/[0.04] p-4">
-      <h2 className="m-0 text-sm font-semibold">{title}</h2>
-      <p className="mt-1 mb-4 text-xs text-white/50">{description}</p>
-
-      <div className="mb-3">
-        <label className={LABEL}>Base URL</label>
-        <input
-          className={FIELD}
-          value={section.baseUrl}
-          onChange={(event) => section.setBaseUrl(event.target.value)}
-          placeholder="https://api.siliconflow.cn/v1/..."
-        />
+    <section className="settings-section">
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div>
+          <h2 className="section-title">{title}</h2>
+          <p className="mt-1 mb-0 max-w-[560px] text-xs leading-relaxed text-white/44">{description}</p>
+        </div>
+        <span className={`mt-0.5 text-[11px] ${section.hasStoredKey ? "text-[#b9c6cc]" : "text-white/32"}`}>
+          {section.hasStoredKey ? "已配置" : "未配置"}
+        </span>
       </div>
 
-      <div className="mb-3">
-        <label className={LABEL}>Model</label>
-        <input
-          className={FIELD}
-          value={section.model}
-          onChange={(event) => section.setModel(event.target.value)}
-        />
+      <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(180px,0.8fr)] gap-3">
+        <label>
+          <span className={LABEL}>Base URL</span>
+          <input
+            className={FIELD}
+            value={section.baseUrl}
+            onChange={(event) => section.setBaseUrl(event.target.value)}
+            placeholder="https://api.siliconflow.cn/v1/..."
+          />
+        </label>
+        <label>
+          <span className={LABEL}>Model</span>
+          <input
+            className={FIELD}
+            value={section.model}
+            onChange={(event) => section.setModel(event.target.value)}
+          />
+        </label>
       </div>
 
-      <div className="mb-4">
+      <div className="mt-3 mb-4">
         <label className={LABEL}>
           API Key {section.hasStoredKey && <span className="text-white/40">(saved — leave blank to keep)</span>}
         </label>
@@ -186,7 +191,7 @@ export function ProviderSection({
         <p className="mt-2 text-xs text-white/60">{section.saveMessage}</p>
       )}
       {section.testResult && (
-        <p className={`mt-2 text-xs ${section.testResult.success ? "text-[#38d879]" : "text-[#ff5c70]"}`}>
+        <p className={`mt-2 text-xs ${section.testResult.success ? "text-[#b9c6cc]" : "text-[#ff5c70]"}`}>
           {section.testResult.message}
         </p>
       )}
@@ -214,10 +219,10 @@ export function DiagnosticsSection() {
   }, [load]);
 
   return (
-    <section className="mb-6 rounded-xl border border-white/[0.08] bg-white/[0.04] p-4">
+    <section className="settings-section">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <h2 className="m-0 text-sm font-semibold">Diagnostics</h2>
+          <h2 className="section-title">Diagnostics</h2>
           <p className="mt-1 mb-0 text-xs text-white/50">
             Audio and runtime status for local debugging.
           </p>
@@ -227,7 +232,7 @@ export function DiagnosticsSection() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-2.5">
+      <div>
         <DiagnosticItem label="Tauri shell" value="Ready" state="ok" />
         <DiagnosticItem
           label="Audio state"
@@ -318,18 +323,19 @@ function DictationSection() {
   };
 
   return (
-    <section className="mb-6 rounded-xl border border-white/[0.08] bg-white/[0.04] p-4">
-      <h2 className="m-0 text-sm font-semibold">Voice shortcuts</h2>
-      <p className="mt-1 mb-4 text-xs leading-relaxed text-white/50">
-        Press Fn + Space twice to dictate. Hold Fn to ask AI, then release to submit. Press Escape to cancel.
+    <section className="settings-section">
+      <h2 className="section-title">Voice shortcuts</h2>
+      <p className="mt-1 mb-4 text-xs leading-relaxed text-white/44">
+        控制语音输入、自动粘贴与模型整理。
       </p>
 
-      <label className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-white/[0.08] bg-white/[0.04] p-3 text-sm">
+      <label className="settings-row mb-3 justify-between text-sm">
         <span>
           <span className="block text-[13px] font-medium">Enable voice shortcuts</span>
           <span className="block text-xs text-white/45">Dictation and Voice Ask run independently from Meeting and Coach.</span>
         </span>
         <input
+          className="ui-switch"
           type="checkbox"
           checked={settings.enabled}
           onChange={(event) => setSettings((current) => ({ ...current, enabled: event.target.checked }))}
@@ -357,7 +363,7 @@ function DictationSection() {
         </label>
       </div>
 
-      <div className="mb-4 grid grid-cols-1 gap-2">
+      <div className="mb-4">
         <DictationToggle
           label="AI polish"
           description="Remove filler and fix punctuation without adding new ideas."
@@ -378,7 +384,7 @@ function DictationSection() {
         />
       </div>
 
-      <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div className="mb-3">
         <DiagnosticItem
           label="Microphone access"
           value={formatMicrophonePermission(status?.microphonePermission)}
@@ -452,12 +458,12 @@ function DictationToggle({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2.5">
+    <label className="settings-row justify-between">
       <span>
         <span className="block text-[13px] font-medium">{label}</span>
         <span className="block text-xs text-white/45">{description}</span>
       </span>
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      <input className="ui-switch" type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
     </label>
   );
 }
@@ -472,16 +478,12 @@ function DiagnosticItem({
   state: "ok" | "pending";
 }) {
   return (
-    <div className="flex items-center gap-2.5 rounded-lg border border-white/[0.08] bg-white/[0.05] p-3">
+    <div className="settings-row">
       <span
-        className={`h-[9px] w-[9px] shrink-0 rounded-full ${
-          state === "ok" ? "bg-[#38d879]" : "bg-white/30"
-        }`}
+        className={`h-4 w-[2px] shrink-0 ${state === "ok" ? "bg-[#9cafb8]" : "bg-white/22"}`}
       />
-      <div className="min-w-0">
-        <p className="m-0 mb-0.5 text-[13px] font-semibold">{label}</p>
-        <span className="block truncate text-[13px] leading-normal text-white/70">{value}</span>
-      </div>
+      <p className="m-0 min-w-[150px] text-[12px] font-medium text-white/62">{label}</p>
+      <span className="min-w-0 flex-1 truncate text-right text-[12px] leading-normal text-white/46">{value}</span>
     </div>
   );
 }
@@ -511,13 +513,14 @@ export function SettingsContent({
   }, [loadOnboardingStatus]);
 
   return (
-    <div className={compact ? "" : "h-screen w-screen overflow-y-auto bg-[#1b1b1c] p-5"}>
-      <h1 className="m-0 mb-1 text-base font-semibold">Meetly Settings</h1>
-      <p className="mt-0 mb-5 text-xs text-white/50">
-        Configure the STT and LLM providers used for transcription and
-        suggestions. API keys are stored in the local development secrets
-        file.
-      </p>
+    <div className={compact ? "" : "h-screen w-screen overflow-y-auto bg-[#151718] px-6 py-5"}>
+      {!compact && (
+        <div className="mb-5">
+          <p className="section-label">Workspace</p>
+          <h1 className="m-0 mt-1 text-base font-semibold text-white/90">设置</h1>
+          <p className="mt-1 mb-0 text-xs text-white/42">模型、语音输入、运行状态与应用更新。</p>
+        </div>
+      )}
 
       {!onboardingStatus?.completed && (
         <OnboardingPanel
@@ -529,22 +532,24 @@ export function SettingsContent({
         />
       )}
 
-      <ProviderSection
-        title="Speech-to-text"
-        description="Used to transcribe microphone audio segments. Any OpenAI-Whisper-compatible endpoint works."
-        kind="stt"
-        onSaved={() => void loadOnboardingStatus()}
-      />
-      <ProviderSection
-        title="Assistant (LLM)"
-        description="Used to generate Ask suggestions from recent transcript. Any OpenAI-compatible chat completions endpoint works."
-        kind="llm"
-        onSaved={() => void loadOnboardingStatus()}
-      />
-      <DictationSection />
-      <DiagnosticsSection />
-      <UpdateSection />
-      <FooterActions onQuit={onQuit} />
+      <div className="settings-stack">
+        <ProviderSection
+          title="Speech-to-text"
+          description="转写麦克风与系统音频，支持 OpenAI Whisper-compatible 接口。"
+          kind="stt"
+          onSaved={() => void loadOnboardingStatus()}
+        />
+        <ProviderSection
+          title="Assistant (LLM)"
+          description="生成 Ask、主动建议和语音整理，支持 OpenAI-compatible 接口。"
+          kind="llm"
+          onSaved={() => void loadOnboardingStatus()}
+        />
+        <DictationSection />
+        <DiagnosticsSection />
+        <UpdateSection />
+        <FooterActions onQuit={onQuit} />
+      </div>
     </div>
   );
 }
@@ -563,7 +568,7 @@ function FooterActions({ onQuit }: { onQuit?: () => void }) {
   };
 
   return (
-    <div className="pb-2">
+    <div className="py-4">
       <button className={SECONDARY_BUTTON} onClick={quit}>
         Quit Meetly
       </button>
