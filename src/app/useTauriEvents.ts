@@ -24,6 +24,25 @@ export function useTauriEvents(
     let disposed = false;
     let unlisten: (() => void) | undefined;
 
+    void listen<boolean>("island_visibility_changed", (event) => {
+      if (!disposed) ctx.setIsHidden(!event.payload);
+    }).then((nextUnlisten) => {
+      if (disposed) nextUnlisten();
+      else unlisten = nextUnlisten;
+    });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [ctx]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+
     void listen<AudioLevelChanged>("audio_level_changed", (event) => {
       if (!disposed) ctx.setAudioLevel(event.payload.level);
     }).then((nextUnlisten) => {

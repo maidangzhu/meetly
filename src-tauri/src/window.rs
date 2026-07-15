@@ -1,6 +1,7 @@
 use std::{sync::Mutex, time::Duration};
 use tauri::{
-    App, AppHandle, Manager, PhysicalPosition, PhysicalSize, Position, State, WebviewWindow,
+    App, AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Position, State, WebviewUrl,
+    WebviewWindow, WebviewWindowBuilder,
 };
 
 const COLLAPSED_WIDTH: f64 = 600.0;
@@ -249,6 +250,51 @@ pub fn set_island_visible(window: WebviewWindow, visible: bool) -> Result<(), St
         window.hide().map_err(|error| error.to_string())?;
     }
 
+    window
+        .emit("island_visibility_changed", visible)
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+/// Restores the standard island after it has become hidden, off-screen, or
+/// stuck in a compact voice overlay. Active voice runs keep their overlay
+/// geometry so recovering the window cannot interrupt recording.
+pub fn recover_island_window(app: &AppHandle) -> Result<(), String> {
+    let Some(window) = app.get_webview_window("island") else {
+        return Err("Meetly window not found".to_string());
+    };
+
+    if !crate::dictation::has_active_run(app) {
+        let state = app.state::<DictationOverlayState>();
+        let mut overlay = state
+            .inner
+            .lock()
+            .map_err(|error| format!("Failed to lock Dictation window state: {error}"))?;
+        overlay.snapshot = None;
+        overlay.cursor_monitor = None;
+        drop(overlay);
+
+        window
+            .set_min_size(None::<tauri::LogicalSize<f64>>)
+            .map_err(|error| error.to_string())?;
+        window
+            .set_size(collapsed_window_size())
+            .map_err(|error| error.to_string())?;
+        position_top_center_at_cursor(&window)?;
+        window
+            .set_min_size(Some(tauri::LogicalSize::new(
+                COLLAPSED_WIDTH,
+                COLLAPSED_HEIGHT,
+            )))
+            .map_err(|error| error.to_string())?;
+    }
+
+    window.show().map_err(|error| error.to_string())?;
+    window.set_focus().map_err(|error| error.to_string())?;
+    app.emit("island_visibility_changed", true)
+        .map_err(|error| error.to_string())?;
+    let _ = crate::debug_log::append("[menu-bar] restored Meetly island");
     Ok(())
 }
 
@@ -275,10 +321,19 @@ pub fn set_stealth(window: WebviewWindow, enabled: bool) -> Result<(), String> {
 /// alongside the floating island.
 #[tauri::command]
 pub fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
-    let Some(window) = app.get_webview_window("settings") else {
-        return Err("Settings window not found".to_string());
+    let window = if let Some(window) = app.get_webview_window("settings") {
+        window
+    } else {
+        WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App("settings.html".into()))
+            .title("Meetly Settings")
+            .inner_size(480.0, 560.0)
+            .min_inner_size(420.0, 480.0)
+            .center()
+            .build()
+            .map_err(|error| error.to_string())?
     };
     window.show().map_err(|error| error.to_string())?;
+    window.unminimize().map_err(|error| error.to_string())?;
     window.set_focus().map_err(|error| error.to_string())?;
     Ok(())
 }
@@ -323,6 +378,29 @@ fn position_top_center(window: &WebviewWindow) -> tauri::Result<()> {
     }
 
     Ok(())
+}
+
+fn position_top_center_at_cursor(window: &WebviewWindow) -> Result<(), String> {
+    let Some(geometry) = cursor_monitor_geometry(window)? else {
+        return position_top_center(window).map_err(|error| error.to_string());
+    };
+    let window_size = window.outer_size().map_err(|error| error.to_string())?;
+    let window_width = window_size.width as i32;
+    let window_height = window_size.height as i32;
+    let centered_x = geometry.monitor_x + (geometry.monitor_width - window_width) / 2;
+    let desired_y = geometry.monitor_y + TOP_OFFSET - OUTER_GUTTER.round() as i32;
+    let max_x = geometry.monitor_x + geometry.monitor_width - window_width;
+    let max_y = geometry.monitor_y + geometry.monitor_height - window_height;
+    let x = clamp_i32(
+        centered_x,
+        geometry.monitor_x,
+        max_x.max(geometry.monitor_x),
+    );
+    let y = clamp_i32(desired_y, geometry.monitor_y, max_y.max(geometry.monitor_y));
+
+    window
+        .set_position(Position::Physical(PhysicalPosition::new(x, y)))
+        .map_err(|error| error.to_string())
 }
 
 fn position_overlay(

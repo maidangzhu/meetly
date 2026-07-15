@@ -4,6 +4,7 @@ mod audio;
 mod debug_log;
 mod dictation;
 mod domain;
+mod menu_bar;
 mod providers;
 mod window;
 
@@ -76,6 +77,7 @@ pub fn run() {
                 app.package_info().version,
                 cfg!(debug_assertions)
             ));
+            menu_bar::setup(app)?;
             window::setup_island_window(app)?;
             providers::dev_env::seed_from_dotenv_if_missing(app.handle());
             dictation::initialize(app.handle());

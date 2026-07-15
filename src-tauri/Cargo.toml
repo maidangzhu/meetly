@@ -24,7 +24,7 @@ hound = "3.5"
 pdf-extract = "0.12"
 reqwest = { version = "0.12", features = ["json", "multipart", "stream"] }
 ringbuf = "0.4"
-tauri = { version = "2", features = ["macos-private-api"] }
+tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
 tauri-plugin-clipboard-manager = "2.3.2"
 tauri-plugin-global-shortcut = "2.3.1"
 tauri-plugin-opener = "2"
