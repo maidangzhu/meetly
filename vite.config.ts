@@ -18,6 +18,7 @@ export default defineConfig({
       input: {
         island: resolve(__dirname, "index.html"),
         settings: resolve(__dirname, "settings.html"),
+        voiceOverlay: resolve(__dirname, "voice-overlay.html"),
       },
     },
   },

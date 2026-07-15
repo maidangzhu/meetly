@@ -43,6 +43,25 @@
         "focus": false,
         "acceptFirstMouse": true,
         "shadow": false
+      },
+      {
+        "label": "voice-overlay",
+        "title": "Meetly Voice Overlay",
+        "url": "voice-overlay.html",
+        "width": 320,
+        "height": 68,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": false,
+        "resizable": false,
+        "visibleOnAllWorkspaces": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "center": false,
+        "contentProtected": true,
+        "focus": false,
+        "acceptFirstMouse": true,
+        "shadow": false
       }
     ],
     "security": {

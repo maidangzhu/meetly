@@ -13,21 +13,9 @@ const COMPACT_OVERLAY_WIDTH: f64 = 320.0;
 const COMPACT_OVERLAY_HEIGHT: f64 = 68.0;
 const DICTATION_BOTTOM_OFFSET: f64 = 56.0;
 
-#[derive(Debug, Clone)]
-struct WindowSnapshot {
-    position: PhysicalPosition<i32>,
-    size: PhysicalSize<u32>,
-}
-
 #[derive(Default)]
-pub struct DictationOverlayState {
-    inner: Mutex<OverlayWindowState>,
-}
-
-#[derive(Default)]
-struct OverlayWindowState {
-    snapshot: Option<WindowSnapshot>,
-    cursor_monitor: Option<CursorMonitorGeometry>,
+pub struct VoiceOverlayState {
+    cursor_monitor: Mutex<Option<CursorMonitorGeometry>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -58,134 +46,44 @@ pub fn set_island_height(window: WebviewWindow, height: u32) -> Result<(), Strin
 }
 
 #[tauri::command]
-pub fn set_dictation_overlay_mode(
+pub fn set_voice_overlay_mode(
     app: AppHandle,
-    window: WebviewWindow,
-    state: State<DictationOverlayState>,
-    enabled: bool,
+    state: State<VoiceOverlayState>,
+    visible: bool,
     width: Option<f64>,
     height: Option<f64>,
 ) -> Result<(), String> {
-    if !enabled && crate::dictation::has_active_run(&app) {
-        let _ = crate::debug_log::append("[overlay] ignored restore while voice run is active");
+    if !visible && crate::dictation::has_active_run(&app) {
+        let _ = crate::debug_log::append("[voice-overlay] ignored hide while voice run is active");
         return Ok(());
     }
-    set_overlay_mode(&window, &state, enabled, width, height)
-}
+    let Some(window) = app.get_webview_window("voice-overlay") else {
+        return Err("Voice overlay window not found".to_string());
+    };
 
-fn set_overlay_mode(
-    window: &WebviewWindow,
-    state: &DictationOverlayState,
-    enabled: bool,
-    width: Option<f64>,
-    height: Option<f64>,
-) -> Result<(), String> {
-    let mut overlay = state
-        .inner
+    let mut cursor_monitor = state
+        .cursor_monitor
         .lock()
-        .map_err(|error| format!("Failed to lock Dictation window state: {error}"))?;
+        .map_err(|error| format!("Failed to lock voice overlay state: {error}"))?;
 
-    if enabled {
-        if overlay.snapshot.is_none() {
-            overlay.snapshot = Some(capture_window_snapshot(window)?);
+    if visible {
+        if cursor_monitor.is_none() {
+            *cursor_monitor = cursor_monitor_geometry(&window)?;
         }
-        if overlay.cursor_monitor.is_none() {
-            overlay.cursor_monitor = cursor_monitor_geometry(window)?;
-        }
-        window
-            .set_min_size(None::<tauri::LogicalSize<f64>>)
-            .map_err(|error| error.to_string())?;
         position_overlay(
-            window,
-            overlay.cursor_monitor,
+            &window,
+            *cursor_monitor,
             width.unwrap_or(COMPACT_OVERLAY_WIDTH),
             height.unwrap_or(COMPACT_OVERLAY_HEIGHT),
         )?;
+        window.show().map_err(|error| error.to_string())?;
         return Ok(());
     }
 
-    overlay.cursor_monitor = None;
-    let Some(previous) = overlay.snapshot.take() else {
-        return Ok(());
-    };
-    window
-        .set_min_size(None::<tauri::LogicalSize<f64>>)
-        .map_err(|error| error.to_string())?;
-    let restore_size = normalized_restore_size(
-        previous.size,
-        monitor_scale_at_position(window, previous.position)?,
-    );
-    window
-        .set_size(restore_size)
-        .map_err(|error| error.to_string())?;
-    window
-        .set_position(Position::Physical(previous.position))
-        .map_err(|error| error.to_string())?;
-    window
-        .set_min_size(Some(tauri::LogicalSize::new(
-            COLLAPSED_WIDTH,
-            COLLAPSED_HEIGHT,
-        )))
-        .map_err(|error| error.to_string())?;
-    let _ = crate::debug_log::append(&format!(
-        "[overlay] restored snapshot_size={}x{} restore_size={}x{} position=({},{})",
-        previous.size.width,
-        previous.size.height,
-        restore_size.width,
-        restore_size.height,
-        previous.position.x,
-        previous.position.y
-    ));
+    *cursor_monitor = None;
+    window.hide().map_err(|error| error.to_string())?;
+    let _ = crate::debug_log::append("[voice-overlay] hidden");
     Ok(())
-}
-
-fn capture_window_snapshot(window: &WebviewWindow) -> Result<WindowSnapshot, String> {
-    let snapshot = WindowSnapshot {
-        position: window.outer_position().map_err(|error| error.to_string())?,
-        size: window.outer_size().map_err(|error| error.to_string())?,
-    };
-    let _ = crate::debug_log::append(&format!(
-        "[overlay] captured snapshot size={}x{} position=({},{})",
-        snapshot.size.width, snapshot.size.height, snapshot.position.x, snapshot.position.y
-    ));
-    Ok(snapshot)
-}
-
-fn monitor_scale_at_position(
-    window: &WebviewWindow,
-    position: PhysicalPosition<i32>,
-) -> Result<f64, String> {
-    let monitors = window
-        .available_monitors()
-        .map_err(|error| error.to_string())?;
-    Ok(monitors
-        .iter()
-        .find(|monitor| {
-            let origin = monitor.position();
-            let size = monitor.size();
-            monitor_contains_cursor(
-                origin.x,
-                origin.y,
-                size.width as i32,
-                size.height as i32,
-                position.x as f64,
-                position.y as f64,
-            )
-        })
-        .map(|monitor| monitor.scale_factor())
-        .unwrap_or(window.scale_factor().map_err(|error| error.to_string())?))
-}
-
-fn normalized_restore_size(size: PhysicalSize<u32>, scale: f64) -> PhysicalSize<u32> {
-    let collapsed = collapsed_window_size();
-    let logical_width = size.width as f64 / scale;
-    if logical_width + 1.0 < collapsed.width {
-        return PhysicalSize::new(
-            (collapsed.width * scale).round() as u32,
-            (collapsed.height * scale).round() as u32,
-        );
-    }
-    size
 }
 
 pub(crate) fn prepare_dictation_overlay(app: &AppHandle) {
@@ -210,28 +108,23 @@ fn prepare_compact_overlay(app: &AppHandle, kind: &str) {
 }
 
 fn prepare_compact_overlay_on_main(app: &AppHandle, kind: &str) {
-    let Some(window) = app.get_webview_window("island") else {
+    let Some(window) = app.get_webview_window("voice-overlay") else {
         return;
     };
-    let state = app.state::<DictationOverlayState>();
+    let state = app.state::<VoiceOverlayState>();
     let result = (|| {
-        let mut overlay = state
-            .inner
+        let mut cursor_monitor = state
+            .cursor_monitor
             .lock()
-            .map_err(|error| format!("Failed to lock Dictation window state: {error}"))?;
-        if overlay.snapshot.is_none() {
-            overlay.snapshot = Some(capture_window_snapshot(&window)?);
-        }
-        overlay.cursor_monitor = cursor_monitor_geometry(&window)?;
-        window
-            .set_min_size(None::<tauri::LogicalSize<f64>>)
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| format!("Failed to lock voice overlay state: {error}"))?;
+        *cursor_monitor = cursor_monitor_geometry(&window)?;
         position_overlay(
             &window,
-            overlay.cursor_monitor,
+            *cursor_monitor,
             COMPACT_OVERLAY_WIDTH,
             COMPACT_OVERLAY_HEIGHT,
-        )
+        )?;
+        window.show().map_err(|error| error.to_string())
     })();
 
     if let Err(error) = result {
@@ -257,38 +150,25 @@ pub fn set_island_visible(window: WebviewWindow, visible: bool) -> Result<(), St
     Ok(())
 }
 
-/// Restores the standard island after it has become hidden, off-screen, or
-/// stuck in a compact voice overlay. Active voice runs keep their overlay
-/// geometry so recovering the window cannot interrupt recording.
+/// Restores the standard island after it has become hidden or off-screen.
 pub fn recover_island_window(app: &AppHandle) -> Result<(), String> {
     let Some(window) = app.get_webview_window("island") else {
         return Err("Meetly window not found".to_string());
     };
 
-    if !crate::dictation::has_active_run(app) {
-        let state = app.state::<DictationOverlayState>();
-        let mut overlay = state
-            .inner
-            .lock()
-            .map_err(|error| format!("Failed to lock Dictation window state: {error}"))?;
-        overlay.snapshot = None;
-        overlay.cursor_monitor = None;
-        drop(overlay);
-
-        window
-            .set_min_size(None::<tauri::LogicalSize<f64>>)
-            .map_err(|error| error.to_string())?;
-        window
-            .set_size(collapsed_window_size())
-            .map_err(|error| error.to_string())?;
-        position_top_center_at_cursor(&window)?;
-        window
-            .set_min_size(Some(tauri::LogicalSize::new(
-                COLLAPSED_WIDTH,
-                COLLAPSED_HEIGHT,
-            )))
-            .map_err(|error| error.to_string())?;
-    }
+    window
+        .set_min_size(None::<tauri::LogicalSize<f64>>)
+        .map_err(|error| error.to_string())?;
+    window
+        .set_size(collapsed_window_size())
+        .map_err(|error| error.to_string())?;
+    position_top_center_at_cursor(&window)?;
+    window
+        .set_min_size(Some(tauri::LogicalSize::new(
+            COLLAPSED_WIDTH,
+            COLLAPSED_HEIGHT,
+        )))
+        .map_err(|error| error.to_string())?;
 
     window.show().map_err(|error| error.to_string())?;
     window.set_focus().map_err(|error| error.to_string())?;
@@ -339,16 +219,28 @@ pub fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 pub fn setup_island_window(app: &mut App) -> tauri::Result<()> {
-    let Some(window) = app.get_webview_window("island") else {
+    let Some(island) = app.get_webview_window("island") else {
         return Ok(());
     };
 
     #[cfg(target_os = "macos")]
-    setup_macos_panel(&window);
+    setup_macos_panel(&island);
 
-    window.set_size(collapsed_window_size())?;
-    position_top_center(&window)?;
-    start_click_through_guard(window.clone());
+    island.set_size(collapsed_window_size())?;
+    position_top_center(&island)?;
+    start_click_through_guard(island.clone());
+
+    if let Some(voice_overlay) = app.get_webview_window("voice-overlay") {
+        #[cfg(target_os = "macos")]
+        setup_macos_panel(&voice_overlay);
+
+        voice_overlay.set_size(tauri::LogicalSize::new(
+            COMPACT_OVERLAY_WIDTH,
+            COMPACT_OVERLAY_HEIGHT,
+        ))?;
+        voice_overlay.hide()?;
+        start_click_through_guard(voice_overlay);
+    }
 
     Ok(())
 }
@@ -722,10 +614,9 @@ fn setup_macos_panel(window: &WebviewWindow) {
 #[cfg(test)]
 mod tests {
     use super::{
-        bottom_center_coordinates, monitor_contains_cursor, normalized_restore_size,
-        COMPACT_OVERLAY_HEIGHT, COMPACT_OVERLAY_WIDTH,
+        bottom_center_coordinates, monitor_contains_cursor, COMPACT_OVERLAY_HEIGHT,
+        COMPACT_OVERLAY_WIDTH,
     };
-    use tauri::PhysicalSize;
 
     #[test]
     fn dictation_overlay_is_centered_near_monitor_bottom() {
@@ -768,25 +659,5 @@ mod tests {
             -1920, -120, 1920, 1080, 300.0, 400.0
         ));
         assert!(monitor_contains_cursor(0, 0, 1512, 982, 300.0, 400.0));
-    }
-
-    #[test]
-    fn compact_snapshot_restores_to_collapsed_island_size() {
-        assert_eq!(
-            normalized_restore_size(PhysicalSize::new(320, 68), 1.0),
-            PhysicalSize::new(620, 74)
-        );
-        assert_eq!(
-            normalized_restore_size(PhysicalSize::new(760, 148), 2.0),
-            PhysicalSize::new(1240, 148)
-        );
-    }
-
-    #[test]
-    fn expanded_snapshot_size_is_preserved() {
-        assert_eq!(
-            normalized_restore_size(PhysicalSize::new(1880, 1240), 2.0),
-            PhysicalSize::new(1880, 1240)
-        );
     }
 }
