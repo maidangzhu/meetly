@@ -9,12 +9,25 @@ type MicrophoneClipOptions = {
   onLevel?: (level: number) => void;
 };
 
+const MICROPHONE_MIME_TYPES = [
+  "audio/mp4;codecs=mp4a.40.2",
+  "audio/mp4",
+  "audio/webm;codecs=opus",
+  "audio/webm",
+  "audio/ogg;codecs=opus",
+  "audio/ogg",
+];
+
+export function getSupportedMicrophoneMimeType() {
+  return MICROPHONE_MIME_TYPES.find((candidate) => MediaRecorder.isTypeSupported(candidate)) ?? "";
+}
+
 export async function startMicrophoneClip(
   options: MicrophoneClipOptions = {}
 ): Promise<MicrophoneClipSession> {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg";
-  const recorder = new MediaRecorder(stream, { mimeType });
+  const mimeType = getSupportedMicrophoneMimeType();
+  const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
   const chunks: Blob[] = [];
   let cancelled = false;
   let stopPromise: Promise<Blob> | null = null;
@@ -60,7 +73,9 @@ export async function startMicrophoneClip(
   recorder.ondataavailable = (event) => {
     if (event.data.size > 0) chunks.push(event.data);
   };
-  recorder.start(100);
+  // These clips are uploaded only after recording stops, so emit one finalized
+  // container instead of periodic fragments that then need to be concatenated.
+  recorder.start();
 
   return {
     mimeType,

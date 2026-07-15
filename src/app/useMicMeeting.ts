@@ -8,6 +8,7 @@ import {
 } from "./constants";
 import { resetCoachWakeState } from "./coachWakePolicy";
 import { blobToBase64, calculateRms, createId, debugLog, safeInvoke } from "./platform";
+import { getSupportedMicrophoneMimeType } from "./microphoneClip";
 import { buildInterviewReportRequest, generateInterviewReport } from "./reporting";
 import type { InterviewSession, TranscriptSegment } from "./types";
 import type { AgentRuntimeActions } from "./useAgentRuntime";
@@ -160,7 +161,7 @@ export function useMicMeeting(
         });
         ctx.micStreamRef.current = stream;
         startVadLoop(ctx);
-        const mimeType = getSupportedMicMimeType();
+        const mimeType = getSupportedMicrophoneMimeType();
         startRecordingSegment(ctx, stream, mimeType, transcribeMicChunk);
       } else {
         await safeInvoke("start_listening");
@@ -260,11 +261,6 @@ function resetSessionUi(ctx: MeetlyState, session: SessionActions) {
   ctx.lastHintShownAtRef.current = 0;
   ctx.setPrefetchStatus("idle");
   ctx.transcriptHistoryRef.current = [];
-}
-
-function getSupportedMicMimeType() {
-  const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/ogg"];
-  return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) ?? "";
 }
 
 function startVadLoop(ctx: MeetlyState) {

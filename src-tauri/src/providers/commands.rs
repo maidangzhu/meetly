@@ -116,12 +116,19 @@ pub async fn transcribe_audio(
 
     let extension = if mime_type.contains("wav") || mime_type.contains("wave") {
         "wav"
+    } else if mime_type.contains("mp4") {
+        "mp4"
+    } else if mime_type.contains("mpeg") {
+        "mp3"
     } else if mime_type.contains("ogg") {
         "ogg"
     } else {
         "webm"
     };
     let filename = format!("mic_clip.{extension}");
+
+    #[cfg(debug_assertions)]
+    let failed_audio = audio_bytes.clone();
 
     provider
         .transcribe(audio_bytes, &filename, &mime_type)
@@ -136,11 +143,49 @@ pub async fn transcribe_audio(
         })
         .map_err(|error| {
             let message = error.to_string();
+            #[cfg(debug_assertions)]
+            let saved_audio = save_failed_audio(&failed_audio, extension)
+                .map(|path| format!(" saved_audio={}", path.display()))
+                .unwrap_or_else(|save_error| format!(" save_audio_error={save_error}"));
+            #[cfg(not(debug_assertions))]
+            let saved_audio = "";
             let _ = crate::debug_log::append(&format!(
-                "[stt] transcribe_audio provider_error {message}"
+                "[stt] transcribe_audio provider_error {message}{saved_audio}"
             ));
             message
         })
+}
+
+#[cfg(debug_assertions)]
+fn save_failed_audio(audio_bytes: &[u8], extension: &str) -> Result<std::path::PathBuf, String> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let home = dirs::home_dir().ok_or_else(|| "Failed to resolve home directory.".to_string())?;
+    let directory = home.join(".meetly").join("debug-audio");
+    std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
+            .map_err(|error| error.to_string())?;
+    }
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or_default();
+    let path = directory.join(format!("failed-{timestamp}.{extension}"));
+    std::fs::write(&path, audio_bytes).map_err(|error| error.to_string())?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+            .map_err(|error| error.to_string())?;
+    }
+
+    Ok(path)
 }
 
 fn preview(text: &str) -> String {
