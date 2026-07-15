@@ -5,13 +5,20 @@ import { blobToBase64, debugLog, isTauriRuntime } from "../platform";
 import { startMicrophoneClip, type MicrophoneClipSession } from "../microphoneClip";
 import type { AssistantSuggestion } from "../types";
 import type { VoiceAskShortcutPressed, VoiceAskShortcutReleased } from "./types";
-import { INITIAL_VOICE_ASK_STATE, voiceAskReducer } from "./voiceAskReducer";
+import {
+  INITIAL_VOICE_ASK_STATE,
+  selectVoiceAskViewState,
+  voiceAskReducer,
+} from "./voiceAskReducer";
 
 const MIN_RECORDING_MS = 250;
 const CANCELLED_STATE_MS = 1_000;
 
 export function useVoiceAsk() {
-  const [state, dispatch] = useReducer(voiceAskReducer, INITIAL_VOICE_ASK_STATE);
+  const [conversation, dispatch] = useReducer(voiceAskReducer, INITIAL_VOICE_ASK_STATE);
+  const conversationRef = useRef(conversation);
+  conversationRef.current = conversation;
+  const state = selectVoiceAskViewState(conversation);
   const [audioLevel, setAudioLevel] = useState(0);
   const currentRunRef = useRef<string | null>(null);
   const clipSessionRef = useRef<MicrophoneClipSession | null>(null);
@@ -69,14 +76,14 @@ export function useVoiceAsk() {
     }, CANCELLED_STATE_MS);
   };
 
-  const startRun = async ({ runId }: VoiceAskShortcutPressed) => {
+  const startRun = async ({ runId, startedAt }: VoiceAskShortcutPressed) => {
     if (currentRunRef.current) return;
     if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
 
     currentRunRef.current = runId;
     pendingReleaseRef.current = false;
     cancelledRef.current = false;
-    dispatch({ type: "start", runId });
+    dispatch({ type: "start", runId, startedAt });
 
     try {
       const clipSession = await startMicrophoneClip({ onLevel: setAudioLevel });
@@ -152,7 +159,7 @@ export function useVoiceAsk() {
       );
       assertCurrent(runId);
       await finishRun(runId);
-      dispatch({ type: "answered", runId, suggestion });
+      dispatch({ type: "answered", runId, suggestion, createdAt: Date.now() });
       debugLog(`[voice-ask] answered run=${runId} chars=${suggestion.answer.length}`);
     } catch (error) {
       if (cancelledRef.current || currentRunRef.current !== runId) return;
@@ -180,7 +187,7 @@ export function useVoiceAsk() {
     await invoke("cancel_voice_ask_run", { runId }).catch(() => undefined);
     if (currentRunRef.current === runId) currentRunRef.current = null;
     dispatch({ type: "cancelled", runId });
-    scheduleReset();
+    if (conversationRef.current.turns.length === 0) scheduleReset();
     debugLog(`[voice-ask] cancelled run=${runId}`);
   };
 
@@ -208,7 +215,7 @@ export function useVoiceAsk() {
     dispatch({ type: "reset" });
   };
 
-  return { state, audioLevel, close };
+  return { state, conversation, audioLevel, close };
 }
 
 function errorMessage(error: unknown) {
