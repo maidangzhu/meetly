@@ -80,6 +80,13 @@ events with one active run id.
 The system SHALL record the user's microphone on demand and submit one
 complete audio clip to the existing STT provider after recording stops.
 
+#### Scenario: Recording lasts up to three minutes
+
+- **WHEN** a Dictation recording lasts up to 180 seconds
+- **THEN** the recorder SHALL retain audio from the complete recording rather than only its first internal buffer
+- **AND** it SHALL submit one complete encoded audio artifact to STT after recording stops
+- **AND** it SHALL NOT change the Meeting system-audio or segmented microphone capture paths
+
 #### Scenario: Valid speech clip
 
 - **WHEN** a Dictation recording stops with a non-empty audio clip

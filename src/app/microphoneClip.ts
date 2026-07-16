@@ -1,3 +1,5 @@
+import { debugLog } from "./platform";
+
 export type MicrophoneClipSession = {
   mimeType: string;
   startedAt: number;
@@ -8,6 +10,8 @@ export type MicrophoneClipSession = {
 type MicrophoneClipOptions = {
   onLevel?: (level: number) => void;
 };
+
+export const MICROPHONE_CLIP_TIMESLICE_MS = 1_000;
 
 const MICROPHONE_MIME_TYPES = [
   "audio/mp4;codecs=mp4a.40.2",
@@ -28,7 +32,9 @@ export async function startMicrophoneClip(
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   const mimeType = getSupportedMicrophoneMimeType();
   const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+  const recordingMimeType = recorder.mimeType || mimeType;
   const chunks: Blob[] = [];
+  const startedAt = Date.now();
   let cancelled = false;
   let stopPromise: Promise<Blob> | null = null;
   let audioContext: AudioContext | null = null;
@@ -41,6 +47,17 @@ export async function startMicrophoneClip(
     void audioContext?.close().catch(() => undefined);
     audioContext = null;
     stream.getTracks().forEach((track) => track.stop());
+  };
+
+  const finalize = () => {
+    cleanup();
+    const chunkCount = chunks.length;
+    const blob = new Blob(chunks, { type: recordingMimeType });
+    chunks.length = 0;
+    debugLog(
+      `[microphone-clip] finalized duration_ms=${Date.now() - startedAt} chunks=${chunkCount} bytes=${blob.size} mime_type=${recordingMimeType || "default"}`
+    );
+    return blob;
   };
 
   const AudioContextCtor = window.AudioContext ??
@@ -73,13 +90,14 @@ export async function startMicrophoneClip(
   recorder.ondataavailable = (event) => {
     if (event.data.size > 0) chunks.push(event.data);
   };
-  // These clips are uploaded only after recording stops, so emit one finalized
-  // container instead of periodic fragments that then need to be concatenated.
-  recorder.start();
+  // WKWebView can finalize only its first internal MP4 buffer when a recorder
+  // runs without a timeslice. Periodic data events keep long clips complete;
+  // the MediaRecorder contract guarantees their combined Blob is playable.
+  recorder.start(MICROPHONE_CLIP_TIMESLICE_MS);
 
   return {
-    mimeType,
-    startedAt: Date.now(),
+    mimeType: recordingMimeType,
+    startedAt,
     stop() {
       if (stopPromise) return stopPromise;
       stopPromise = new Promise<Blob>((resolve, reject) => {
@@ -92,14 +110,12 @@ export async function startMicrophoneClip(
           reject(new Error("Microphone recording failed."));
         };
         recorder.onstop = () => {
-          cleanup();
-          resolve(new Blob(chunks, { type: mimeType }));
+          resolve(finalize());
         };
         if (recorder.state === "recording") {
           recorder.stop();
         } else {
-          cleanup();
-          resolve(new Blob(chunks, { type: mimeType }));
+          resolve(finalize());
         }
       });
       return stopPromise;
