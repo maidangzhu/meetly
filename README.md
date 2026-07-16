@@ -304,9 +304,12 @@ pnpm package:macos:test
 - [Technical Design](./docs/TECHNICAL_DESIGN.md)
 - [Floating Island Design](./docs/FLOATING_ISLAND_DESIGN.md)
 - [Agent Wake Strategy](./docs/AGENT_WAKE_STRATEGY.md)
+- [Proactive Coach Behavior](./docs/PROACTIVE_COACH_BEHAVIOR.md)
+- [Proactive Coach Runtime Design](./docs/PROACTIVE_COACH_RUNTIME_DESIGN.md)
 - [Stealth and Screen Capture](./docs/STEALTH_AND_SCREEN_CAPTURE.md)
 - [Reference Projects](./docs/REFERENCE_PROJECTS.md)
 - [Voice Dictation OpenSpec](./openspec/changes/add-voice-dictation/)
 - [Voice Dictation Runtime Stabilization OpenSpec](./openspec/changes/stabilize-voice-dictation-runtime/)
+- [Proactive Coach Runtime OpenSpec](./openspec/changes/redesign-proactive-coach-runtime/)
 
 部分设计文档记录了早期方案与架构演进；当前行为以源码和已通过验证的 OpenSpec 为准。

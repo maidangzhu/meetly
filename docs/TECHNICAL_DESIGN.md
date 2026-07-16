@@ -315,6 +315,10 @@ capture_request
 
 ### 4.8 Prompt Orchestrator
 
+主动式 Coach 的事件、Wake Gate、`SILENT`、用户抢占和迟到结果仲裁以
+`docs/PROACTIVE_COACH_RUNTIME_DESIGN.md` 为准。本节只保留通用 prompt 与
+上下文边界，不再定义主动运行时行为。
+
 职责：
 
 - 管理滚动上下文。

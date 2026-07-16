@@ -2,6 +2,7 @@ import { useCallback, useEffect } from "react";
 import { buildInterviewAskContext } from "./interviewLogic";
 import { createId, debugLog, safeInvoke } from "./platform";
 import type { MeetlyState } from "./useMeetlyState";
+import type { AgentRuntimeActions } from "./useAgentRuntime";
 import type { SessionActions } from "./useSessionActions";
 import type { WindowActions } from "./useWindowActions";
 
@@ -9,7 +10,8 @@ export function useAssistantAsk(
   ctx: MeetlyState,
   session: SessionActions,
   windowActions: WindowActions,
-  flushCurrentMicSegment: () => Promise<void>
+  flushCurrentMicSegment: () => Promise<void>,
+  agent: AgentRuntimeActions
 ) {
   const askAssistant = useCallback(async () => {
     if (ctx.isAsking) {
@@ -21,6 +23,8 @@ export function useAssistantAsk(
     ctx.setAssistantSuggestion(null);
     ctx.setAssistantDraft("");
     await windowActions.setPanel("assistant");
+    const askId = createId("ask");
+    agent.recordManualAskStarted(askId);
 
     try {
       await flushCurrentMicSegment();
@@ -35,7 +39,6 @@ export function useAssistantAsk(
         throw new Error("还没有面试/对话转写。先点左侧麦克风开启面试，等出第一段转写后再 Ask。");
       }
 
-      const askId = createId("ask");
       ctx.pendingAskIdRef.current = askId;
       ctx.prefetchInFlightRef.current = null;
       ctx.prefetchCacheRef.current = null;
@@ -66,20 +69,21 @@ export function useAssistantAsk(
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      agent.recordManualAskFinished(askId, "failed", "request_failed");
       ctx.setAssistantError(message);
       ctx.setAssistantDraft("");
       ctx.setIsAsking(false);
-      const askId = ctx.pendingAskIdRef.current;
-      if (askId) {
+      const pendingAskId = ctx.pendingAskIdRef.current;
+      if (pendingAskId) {
         session.updateInterviewSession((current) => ({
           ...current,
           status: current.endedAt ? "idle" : "listening",
-          asks: current.asks.map((ask) => ask.id === askId ? { ...ask, error: message } : ask),
+          asks: current.asks.map((ask) => ask.id === pendingAskId ? { ...ask, error: message } : ask),
         }));
       }
       ctx.pendingAskIdRef.current = null;
     }
-  }, [ctx, flushCurrentMicSegment, session, windowActions]);
+  }, [agent, ctx, flushCurrentMicSegment, session, windowActions]);
 
   useEffect(() => {
     const handleAskShortcut = (event: KeyboardEvent) => {

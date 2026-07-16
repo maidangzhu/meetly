@@ -12,11 +12,13 @@ import type {
 import type { MeetlyState } from "./useMeetlyState";
 import type { AutoAssistActions } from "./useAutoAssist";
 import type { SessionActions } from "./useSessionActions";
+import type { AgentRuntimeActions } from "./useAgentRuntime";
 
 export function useTauriEvents(
   ctx: MeetlyState,
   autoAssist: AutoAssistActions,
-  session: SessionActions
+  session: SessionActions,
+  agent: AgentRuntimeActions
 ) {
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -107,6 +109,7 @@ export function useTauriEvents(
       ctx.setIsAsking(false);
       const askId = ctx.pendingAskIdRef.current;
       if (askId) {
+        agent.recordManualAskFinished(askId, "spoken", "message_committed");
         session.updateInterviewSession((current) => ({
           ...current,
           status: current.endedAt ? "idle" : "listening",
@@ -128,6 +131,7 @@ export function useTauriEvents(
       ctx.setIsAsking(false);
       const askId = ctx.pendingAskIdRef.current;
       if (askId) {
+        agent.recordManualAskFinished(askId, "failed", "run_failed");
         session.updateInterviewSession((current) => ({
           ...current,
           status: current.endedAt ? "idle" : "listening",
@@ -146,5 +150,5 @@ export function useTauriEvents(
       unlistenDone?.();
       unlistenError?.();
     };
-  }, [ctx, session]);
+  }, [agent, ctx, session]);
 }

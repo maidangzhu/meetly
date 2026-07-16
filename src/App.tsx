@@ -51,14 +51,14 @@ export function App() {
   const agent = useAgentRuntime(ctx);
   const autoAssist = useAutoAssist(ctx, session, agent);
   const mic = useMicMeeting(ctx, agent, autoAssist, session, windowActions);
-  const assistant = useAssistantAsk(ctx, session, windowActions, mic.flushCurrentMicSegment);
+  const assistant = useAssistantAsk(ctx, session, windowActions, mic.flushCurrentMicSegment, agent);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const panelPreview = import.meta.env.DEV
     ? new URLSearchParams(window.location.search).get("panel")
     : null;
 
-  useTauriEvents(ctx, autoAssist, session);
+  useTauriEvents(ctx, autoAssist, session, agent);
 
   useEffect(() => {
     if (!panelPreview) return;

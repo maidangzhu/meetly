@@ -209,19 +209,23 @@ Detect useful moments and offer low-interruption help.
 
 Principles:
 
-- default to silent;
-- show small prompts, not full answers;
-- require user action to expand;
+- observe continuously, but call the Agent only after an explainable wake gate;
+- allow low-priority observations to remain `SILENT`;
+- automatically show a concise intervention when it has immediate value;
+- require user action only for expansion or an explicit full answer, not for the initial useful hint;
+- let explicit Ask/Enter preempt any background proactive run;
 - avoid interrupting active speech;
 - always allow dismissing and disabling.
 
 Example prompts:
 
-- "Question detected";
-- "Possible follow-up";
-- "Relevant past note found";
-- "This may need a quick search";
-- "Draft follow-up email".
+- "先别承诺时间，确认依赖项：‘月底可以作为目标，但要先确认接口和验收负责人。’";
+- "对方还没有回答预算边界，可以追问：‘这次预算是已经锁定，还是仍有调整空间？’";
+- "范围正在变宽，先收口负责人和不包含项。";
+
+The runtime contract for this stage is defined in
+`docs/PROACTIVE_COACH_BEHAVIOR.md` and
+`docs/PROACTIVE_COACH_RUNTIME_DESIGN.md`.
 
 ## 5. Memory Design
 
@@ -345,4 +349,3 @@ Initial tables:
 - Do not let stale context drive Ask. Always prioritize the newest transcript.
 - Do not hide memory from the user. Memory must be inspectable and controllable.
 - Do not start with a complex autonomous agent. Build from reliable user-triggered workflows.
-

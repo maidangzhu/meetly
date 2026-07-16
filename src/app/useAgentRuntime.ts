@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import {
   AgentRuntime,
+  CoachEventJournal,
   ContextStore,
   createEnterWake,
   createSessionStartWake,
@@ -10,27 +11,41 @@ import {
   type WakeEvent,
 } from "../runtime/agent";
 import { createId, debugLog } from "./platform";
-import type { CoachMessage, CoachToolTrace, CoachTrigger, TranscriptSegment } from "./types";
+import type {
+  AudioSource,
+  CoachMessage,
+  CoachToolTrace,
+  CoachTrigger,
+  SessionKind,
+  TranscriptSegment,
+} from "./types";
 import type { MeetlyState } from "./useMeetlyState";
 
 export function useAgentRuntime(ctx: MeetlyState) {
   const contextRef = useRef<ContextStore | null>(null);
+  const journalRef = useRef<CoachEventJournal | null>(null);
   const runtimeRef = useRef<AgentRuntime | null>(null);
   const currentSessionIdRef = useRef<string | null>(null);
+  const sessionStartEventIdRef = useRef<string | null>(null);
+  const manualAskEventIdsRef = useRef(new Map<string, string>());
 
   if (!contextRef.current) {
     contextRef.current = new ContextStore();
+  }
+
+  if (!journalRef.current) {
+    journalRef.current = new CoachEventJournal();
   }
 
   if (!runtimeRef.current) {
     runtimeRef.current = new AgentRuntime(
       contextRef.current,
       createPiCoachTransport(),
-      buildCallbacks(ctx)
+      buildCallbacks(ctx, journalRef.current)
     );
   }
 
-  runtimeRef.current.setCallbacks(buildCallbacks(ctx));
+  runtimeRef.current.setCallbacks(buildCallbacks(ctx, journalRef.current));
 
   useEffect(() => {
     const sessionId = ctx.interviewSession?.id ?? null;
@@ -64,7 +79,30 @@ export function useAgentRuntime(ctx: MeetlyState) {
   const pushTranscriptFinal = useCallback((segment: TranscriptSegment) => {
     contextRef.current?.pushTranscript(segment);
 
-    const wake = detectSttWake(segment, ctx.sessionKind);
+    const sessionId = currentSessionIdRef.current;
+    const observed = sessionId
+      ? journalRef.current?.appendEvent({
+          sessionId,
+          type: "transcript.finalized",
+          source: segment.source ?? "system",
+          segmentId: segment.id,
+          speaker: toJournalSpeaker(segment.speaker),
+          evidencePreview: segment.text,
+          details: {
+            startMs: segment.startMs,
+            endMs: segment.endMs,
+          },
+        })
+      : null;
+
+    const detectedWake = detectSttWake(segment, ctx.sessionKind);
+    const wake = detectedWake
+      ? {
+          ...detectedWake,
+          sessionId: sessionId ?? undefined,
+          evidenceEventIds: observed ? [observed.id] : [],
+        }
+      : null;
     if (!wake) {
       debugLog(`[agent] stt wake skipped segment=${segment.id}`);
       return;
@@ -75,7 +113,8 @@ export function useAgentRuntime(ctx: MeetlyState) {
   }, [ctx.sessionKind]);
 
   const wakeEnter = useCallback(() => {
-    const wake = createEnterWake();
+    const sessionId = currentSessionIdRef.current;
+    const wake = { ...createEnterWake(), sessionId: sessionId ?? undefined };
     debugLog(`[agent] enter wake reason=${wake.reason}`);
     runtimeRef.current?.wake(wake);
   }, []);
@@ -87,18 +126,114 @@ export function useAgentRuntime(ctx: MeetlyState) {
       contextRef.current?.setSessionId(sessionId);
     }
     const wake = createSessionStartWake(hasDocuments);
+    wake.sessionId = sessionId;
+    wake.evidenceEventIds = sessionStartEventIdRef.current ? [sessionStartEventIdRef.current] : [];
     debugLog(`[agent] session wake session=${sessionId} reason=${wake.reason}`);
     runtimeRef.current?.wake(wake);
   }, []);
 
+  const recordSessionStarted = useCallback((input: {
+    sessionId: string;
+    sessionKind: SessionKind;
+    audioSource: AudioSource;
+    hasDocuments: boolean;
+  }) => {
+    currentSessionIdRef.current = input.sessionId;
+    contextRef.current?.clear();
+    contextRef.current?.setSessionId(input.sessionId);
+    journalRef.current?.clear();
+    const event = journalRef.current?.appendEvent({
+      sessionId: input.sessionId,
+      type: "session.started",
+      source: "runtime",
+      details: {
+        sessionKind: input.sessionKind,
+        audioSource: input.audioSource,
+        hasDocuments: input.hasDocuments,
+      },
+    });
+    sessionStartEventIdRef.current = event?.id ?? null;
+  }, []);
+
+  const recordCaptureStarted = useCallback((sessionId: string, source: AudioSource) => {
+    journalRef.current?.appendEvent({
+      sessionId,
+      type: "audio.capture.started",
+      source,
+      details: { source },
+    });
+  }, []);
+
+  const recordCaptureFailed = useCallback((sessionId: string, source: AudioSource) => {
+    journalRef.current?.appendEvent({
+      sessionId,
+      type: "audio.capture.failed",
+      source,
+      details: { source, reason: "capture_start_failed" },
+    });
+  }, []);
+
+  const recordSessionEnded = useCallback((sessionId: string) => {
+    journalRef.current?.appendEvent({
+      sessionId,
+      type: "session.ended",
+      source: "runtime",
+    });
+  }, []);
+
+  const recordManualAskStarted = useCallback((askId: string) => {
+    const sessionId = currentSessionIdRef.current;
+    if (!sessionId) return;
+    const event = journalRef.current?.appendEvent({
+      sessionId,
+      type: "user.manual_ask",
+      source: "ui",
+    });
+    if (!event) return;
+    manualAskEventIdsRef.current.set(askId, event.id);
+    journalRef.current?.appendTransition({
+      sessionId,
+      status: "running",
+      reason: "user_manual_ask",
+      wakeId: askId,
+      runId: askId,
+      eventIds: [event.id],
+    });
+  }, []);
+
+  const recordManualAskFinished = useCallback((
+    askId: string,
+    status: "spoken" | "failed",
+    reason: string
+  ) => {
+    const sessionId = currentSessionIdRef.current;
+    const eventId = manualAskEventIdsRef.current.get(askId);
+    if (!sessionId || !eventId) return;
+    journalRef.current?.appendTransition({
+      sessionId,
+      status,
+      reason,
+      wakeId: askId,
+      runId: askId,
+      eventIds: [eventId],
+    });
+    manualAskEventIdsRef.current.delete(askId);
+  }, []);
+
   return {
     pushTranscriptFinal,
+    recordCaptureFailed,
+    recordCaptureStarted,
+    recordManualAskFinished,
+    recordManualAskStarted,
+    recordSessionEnded,
+    recordSessionStarted,
     wakeEnter,
     wakeSessionStart,
   };
 }
 
-function buildCallbacks(ctx: MeetlyState): AgentRuntimeCallbacks {
+function buildCallbacks(ctx: MeetlyState, journal: CoachEventJournal): AgentRuntimeCallbacks {
   return {
     onDelta: (delta, wake) => {
       ctx.setCoachDraft((current) => {
@@ -110,6 +245,7 @@ function buildCallbacks(ctx: MeetlyState): AgentRuntimeCallbacks {
       });
     },
     onWakeStart: (wake) => {
+      appendWakeTransition(journal, wake, "running", wake.reason);
       ctx.coachToolTracesRef.current = [];
       const draft = buildCoachMessage(wake, "");
       ctx.coachInFlightRef.current = true;
@@ -123,9 +259,11 @@ function buildCallbacks(ctx: MeetlyState): AgentRuntimeCallbacks {
       debugLog(`[agent] coach start wake=${wake.kind} reason=${wake.reason}`);
     },
     onWakeSkipped: (wake, reason) => {
+      appendWakeTransition(journal, wake, "ignored", reason);
       debugLog(`[agent] wake skipped wake=${wake.kind} reason=${reason}`);
     },
     onRetry: (attempt, reason, wake) => {
+      appendWakeTransition(journal, wake, "running", reason, { attempt });
       ctx.setCoachDraft(buildCoachMessage(wake, ""));
       setCoachActivity(ctx, {
         phase: "thinking",
@@ -135,6 +273,9 @@ function buildCallbacks(ctx: MeetlyState): AgentRuntimeCallbacks {
       debugLog(`[agent] coach retry wake=${wake.kind} attempt=${attempt} reason=${reason}`);
     },
     onMessage: (suggestion, wake) => {
+      appendWakeTransition(journal, wake, "spoken", "message_committed", {
+        answerChars: suggestion.answer.length,
+      });
       const message = buildCoachMessage(wake, suggestion.answer, ctx.coachToolTracesRef.current);
       const next = [...ctx.coachMessagesRef.current, message].slice(-8);
       ctx.coachMessagesRef.current = next;
@@ -150,6 +291,7 @@ function buildCallbacks(ctx: MeetlyState): AgentRuntimeCallbacks {
       debugLog(`[agent] coach message wake=${wake.kind} chars=${suggestion.answer.length}`);
     },
     onError: (message, wake) => {
+      appendWakeTransition(journal, wake, "failed", "run_failed");
       const errorMessage = buildCoachMessage(wake, `教练生成失败：${message}`, ctx.coachToolTracesRef.current);
       const next = [...ctx.coachMessagesRef.current, errorMessage].slice(-8);
       ctx.coachMessagesRef.current = next;
@@ -189,6 +331,31 @@ function buildCallbacks(ctx: MeetlyState): AgentRuntimeCallbacks {
       debugLog(`[agent] coach tool trace name=${trace.name} status=${trace.status}`);
     },
   };
+}
+
+function appendWakeTransition(
+  journal: CoachEventJournal,
+  wake: WakeEvent,
+  status: "ignored" | "running" | "spoken" | "failed",
+  reason: string,
+  details?: Record<string, string | number | boolean | null>
+) {
+  if (!wake.sessionId) return;
+  journal.appendTransition({
+    sessionId: wake.sessionId,
+    status,
+    reason,
+    wakeId: wake.id,
+    runId: wake.id,
+    eventIds: wake.evidenceEventIds,
+    details,
+  });
+}
+
+function toJournalSpeaker(speaker: TranscriptSegment["speaker"]) {
+  if (speaker === "user") return "user" as const;
+  if (speaker === "interviewer") return "other" as const;
+  return "unknown" as const;
 }
 
 function setCoachActivity(

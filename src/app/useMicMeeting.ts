@@ -99,18 +99,19 @@ export function useMicMeeting(
     ctx.setPrefetchStatus("idle");
     ctx.setAudioLevel(0);
     ctx.setState("idle");
-    let reportSession: InterviewSession | null = null;
     const endedAt = Date.now();
-    session.updateInterviewSession((current) => {
+    const reportSession: InterviewSession | null = session.updateInterviewSession((current) => {
       const next = {
         ...current,
         endedAt,
         status: "idle" as const,
       };
-      reportSession = next;
       debugLog(`[session] stop id=${next.id} transcript_count=${next.transcript.length} asks=${next.asks.length}`);
       return next;
     });
+    if (reportSession) {
+      agent.recordSessionEnded(reportSession.id);
+    }
     debugLog(`[audio] stop completed ui_ms=${Date.now() - stopStartedAt}`);
 
     if (reportSession) {
@@ -123,7 +124,7 @@ export function useMicMeeting(
         })
       );
     }
-  }, [ctx, session]);
+  }, [agent, ctx, session]);
 
   const startMicMeeting = useCallback(async () => {
     resetSessionUi(ctx, session);
@@ -142,6 +143,12 @@ export function useMicMeeting(
       autoAssistCandidate: null,
     };
     session.setCurrentInterviewSession(nextSession);
+    agent.recordSessionStarted({
+      sessionId: nextSession.id,
+      sessionKind: nextSession.kind,
+      audioSource: nextSession.audioSource,
+      hasDocuments: nextSession.documents.length > 0,
+    });
     debugLog(`[session] start id=${nextSession.id}`);
     debugLog(`[audio] start requested source=${ctx.audioSource} kind=${ctx.sessionKind}`);
 
@@ -169,10 +176,12 @@ export function useMicMeeting(
       ctx.setAudioLevel(0.35);
       ctx.setState("listening");
       void windowActions.setPanel("assistant");
+      agent.recordCaptureStarted(nextSession.id, ctx.audioSource);
       agent.wakeSessionStart(nextSession.id, ctx.contextDocumentsRef.current.length > 0);
       debugLog(`[audio] ${ctx.audioSource} capture started`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      agent.recordCaptureFailed(nextSession.id, ctx.audioSource);
       ctx.setTranscriptError(`${ctx.audioSource === "microphone" ? "麦克风" : "会议音频"}监听失败：${message}`);
       debugLog(`[audio] start error message=${message}`);
       session.updateInterviewSession((current) => ({

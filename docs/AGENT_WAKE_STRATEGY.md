@@ -1,5 +1,10 @@
 # 场边教练叫醒策略：关键时刻低声提醒
 
+> 本文记录早期 heartbeat / `usePiCoach` 方案与研究背景。当前产品行为以
+> `docs/PROACTIVE_COACH_BEHAVIOR.md` 为准，当前实现方案以
+> `docs/PROACTIVE_COACH_RUNTIME_DESIGN.md` 和
+> `openspec/changes/redesign-proactive-coach-runtime/` 为准。
+
 ## 1. 结论
 
 Meetly 的场边教练不应该简单地“每 10 秒输出一条建议”。这会让它像弹幕或规则提示器，而不是一个懂现场的教练。

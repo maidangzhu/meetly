@@ -1,6 +1,7 @@
 mod app;
 mod app_state;
 mod audio;
+mod coach_event_log;
 mod debug_log;
 mod dictation;
 mod domain;
@@ -45,6 +46,7 @@ pub fn run() {
             audio::get_recent_transcript,
             audio::start_listening,
             audio::stop_listening,
+            coach_event_log::append_coach_event_log,
             debug_log::append_debug_log,
             dictation::cancel_voice_ask_run,
             dictation::cancel_dictation_run,
