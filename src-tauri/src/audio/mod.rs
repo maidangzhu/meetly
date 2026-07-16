@@ -8,7 +8,7 @@ use tokio::task::JoinHandle;
 mod speaker;
 mod transcript_buffer;
 mod vad;
-mod wav;
+pub(crate) mod wav;
 
 use transcript_buffer::{TranscriptBuffer, TranscriptSegment};
 use vad::{Segmenter, SegmenterEvent, VadConfig};
@@ -316,8 +316,6 @@ fn spawn_transcription(
             }
         };
 
-        use crate::providers::stt::SttProvider as _;
-
         let provider = match crate::providers::stt::build_from_saved_config(&app) {
             Ok(provider) => provider,
             Err(error) => {
@@ -332,7 +330,11 @@ fn spawn_transcription(
         };
 
         match provider
-            .transcribe(wav_bytes, "segment.wav", "audio/wav")
+            .transcribe(crate::providers::stt::BatchAsrRequest::new(
+                wav_bytes,
+                "segment.wav",
+                "audio/wav",
+            ))
             .await
         {
             Ok(text) => {

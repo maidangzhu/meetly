@@ -6,8 +6,8 @@
 > migration are now defined in
 > [`PROVIDER_ARCHITECTURE.md`](./PROVIDER_ARCHITECTURE.md) and
 > [`VOICE_DICTATION_RUNTIME_DESIGN.md`](./VOICE_DICTATION_RUNTIME_DESIGN.md).
-> Existing implementation remains batch OpenAI-compatible until the new
-> OpenSpec steps are implemented.
+> The first shared registry slice is now implemented with OpenAI-compatible
+> batch ASR and Xiaomi MiMo batch ASR. Realtime provider work remains planned.
 
 ## 1. 结论
 

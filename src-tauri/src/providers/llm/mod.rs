@@ -1,8 +1,8 @@
 mod openai_compatible;
 
-use crate::providers::config::DiagnosticResult;
+use crate::providers::config::{DiagnosticResult, ProviderId, ProviderKind};
 use crate::providers::credentials;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
@@ -39,6 +39,18 @@ pub struct ChatMessage {
     pub content: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThinkingControl {
+    Unsupported,
+    ProviderSpecific,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LlmCapabilities {
+    pub supports_streaming: bool,
+    pub thinking_control: ThinkingControl,
+}
+
 impl ChatMessage {
     pub fn user(content: impl Into<String>) -> Self {
         Self {
@@ -61,11 +73,22 @@ impl ChatMessage {
 /// non-streaming).
 #[async_trait::async_trait]
 pub trait LlmProvider: Send + Sync {
+    fn id(&self) -> ProviderId;
+    fn capabilities(&self) -> LlmCapabilities;
+
     async fn complete_messages(
         &self,
         system_prompt: String,
         messages: Vec<ChatMessage>,
     ) -> Result<AssistantSuggestion>;
+
+    async fn complete_text(
+        &self,
+        system_prompt: String,
+        user_message: String,
+        temperature: f32,
+        disable_reasoning: bool,
+    ) -> Result<String>;
 
     async fn complete(
         &self,
@@ -79,9 +102,15 @@ pub trait LlmProvider: Send + Sync {
 
 /// Builds an `LlmProvider` from the currently saved config and Keychain API
 /// key. Returns an error if no key has been saved yet.
-pub fn build_from_saved_config(app: &AppHandle) -> Result<OpenAiCompatibleLlm> {
-    let credentials = credentials::resolve(app, crate::providers::config::ProviderKind::Llm)?;
-    Ok(OpenAiCompatibleLlm::new(credentials))
+pub fn build_from_saved_config(app: &AppHandle) -> Result<Box<dyn LlmProvider>> {
+    let credentials = credentials::resolve(app, ProviderKind::Llm)?;
+    match credentials.provider_id {
+        ProviderId::OpenAiCompatible => Ok(Box::new(OpenAiCompatibleLlm::new(credentials))),
+        provider_id => Err(anyhow!(
+            "Provider {} is not registered for LLM.",
+            provider_id.as_str()
+        )),
+    }
 }
 
 /// Sends a minimal chat completion request ("respond with OK") to the
@@ -105,10 +134,18 @@ pub async fn test_connection(app: &AppHandle) -> DiagnosticResult {
         .complete(probe_prompt.to_string(), "ping".to_string())
         .await
     {
-        Ok(_) => DiagnosticResult {
-            success: true,
-            message: "LLM endpoint reachable and returned a response.".to_string(),
-        },
+        Ok(_) => {
+            let capabilities = provider.capabilities();
+            DiagnosticResult {
+                success: true,
+                message: format!(
+                    "{} LLM endpoint reachable (streaming={}, thinking={:?}).",
+                    provider.id().as_str(),
+                    capabilities.supports_streaming,
+                    capabilities.thinking_control
+                ),
+            }
+        }
         Err(error) => DiagnosticResult {
             success: false,
             message: error.to_string(),

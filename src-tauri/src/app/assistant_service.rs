@@ -1,7 +1,7 @@
 use super::prompt_orchestrator::{build_system_prompt, build_user_message};
 use crate::audio::AudioState;
 use crate::domain::assistant::AssistantMode;
-use crate::providers::llm::{AssistantSuggestion, ChatMessage, LlmProvider as _};
+use crate::providers::llm::{AssistantSuggestion, ChatMessage};
 use futures_util::StreamExt;
 use serde_json::json;
 use tauri::{AppHandle, Emitter};

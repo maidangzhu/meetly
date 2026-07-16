@@ -10,10 +10,20 @@ import type {
 import { DEFAULT_DICTATION_SETTINGS } from "./app/dictation/types";
 
 type ProviderKind = "stt" | "llm";
+type ProviderId = "openai_compatible" | "xiaomi_mimo";
 
 type ProviderConfig = {
+  providerId: ProviderId;
   baseUrl: string;
   model: string;
+};
+
+type ProviderDescriptor = {
+  id: ProviderId;
+  displayName: string;
+  description: string;
+  defaultBaseUrl: string;
+  defaultModel: string;
 };
 
 type DiagnosticResult = {
@@ -40,6 +50,8 @@ const PRIMARY_BUTTON = "ui-primary-button";
 const SECONDARY_BUTTON = "ui-secondary-button";
 
 function useProviderSection(kind: ProviderKind) {
+  const [providerId, setProviderId] = useState<ProviderId>("openai_compatible");
+  const [providerOptions, setProviderOptions] = useState<ProviderDescriptor[]>([]);
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -51,7 +63,12 @@ function useProviderSection(kind: ProviderKind) {
 
   const load = useCallback(async () => {
     try {
-      const config = await invoke<ProviderConfig>("get_provider_config", { kind });
+      const [config, options] = await Promise.all([
+        invoke<ProviderConfig>("get_provider_config", { kind }),
+        invoke<ProviderDescriptor[]>("list_provider_options", { kind }),
+      ]);
+      setProviderId(config.providerId);
+      setProviderOptions(options);
       setBaseUrl(config.baseUrl);
       setModel(config.model);
       const stored = await invoke<boolean>("has_api_key", { kind });
@@ -71,6 +88,7 @@ function useProviderSection(kind: ProviderKind) {
     try {
       await invoke("save_provider_config", {
         kind,
+        providerId,
         baseUrl,
         model,
         apiKey,
@@ -86,7 +104,16 @@ function useProviderSection(kind: ProviderKind) {
     } finally {
       setIsSaving(false);
     }
-  }, [kind, baseUrl, model, apiKey]);
+  }, [kind, providerId, baseUrl, model, apiKey]);
+
+  const selectProvider = (nextProviderId: ProviderId) => {
+    setProviderId(nextProviderId);
+    const descriptor = providerOptions.find((option) => option.id === nextProviderId);
+    if (!descriptor) return;
+    setBaseUrl(descriptor.defaultBaseUrl);
+    setModel(descriptor.defaultModel);
+    setTestResult(null);
+  };
 
   const test = useCallback(async () => {
     setIsTesting(true);
@@ -104,6 +131,9 @@ function useProviderSection(kind: ProviderKind) {
   }, [kind]);
 
   return {
+    providerId,
+    providerOptions,
+    selectProvider,
     baseUrl,
     setBaseUrl,
     model,
@@ -150,6 +180,21 @@ export function ProviderSection({
       </div>
 
       <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(180px,0.8fr)] gap-3">
+        <label className="col-span-2">
+          <span className={LABEL}>Provider</span>
+          <select
+            className={FIELD}
+            value={section.providerId}
+            onChange={(event) => section.selectProvider(event.target.value as ProviderId)}
+          >
+            {section.providerOptions.map((option) => (
+              <option key={option.id} value={option.id}>{option.displayName}</option>
+            ))}
+          </select>
+          <span className="mt-1 block text-[11px] leading-relaxed text-white/38">
+            {section.providerOptions.find((option) => option.id === section.providerId)?.description}
+          </span>
+        </label>
         <label>
           <span className={LABEL}>Base URL</span>
           <input
@@ -539,13 +584,13 @@ export function SettingsContent({
       <div className="settings-stack">
         <ProviderSection
           title="Speech-to-text"
-          description="转写麦克风与系统音频，支持 OpenAI Whisper-compatible 接口。"
+          description="转写麦克风与系统音频；不同 provider 使用各自独立的协议和音频能力。"
           kind="stt"
           onSaved={() => void loadOnboardingStatus()}
         />
         <ProviderSection
           title="Assistant (LLM)"
-          description="生成 Ask、主动建议和语音整理，支持 OpenAI-compatible 接口。"
+          description="生成 Ask、主动建议和语音整理；ASR 与 LLM provider 独立选择。"
           kind="llm"
           onSaved={() => void loadOnboardingStatus()}
         />

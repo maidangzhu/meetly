@@ -54,6 +54,30 @@ that declares supported execution modes and optional features.
 - **AND** the provider SHALL NOT be selected or rejected based on provider-name
   conditionals outside the adapter/registry boundary
 
+#### Scenario: Xiaomi MiMo batch ASR is selected
+
+- **WHEN** the active ASR provider is `xiaomi_mimo`
+- **THEN** the registry SHALL resolve the MiMo adapter explicitly rather than infer it from the request URL
+- **AND** encoded microphone audio SHALL be normalized to 16 kHz mono WAV before transport
+- **AND** the adapter SHALL send JSON `input_audio` content to Chat Completions using MiMo authentication
+- **AND** the adapter SHALL extract transcript text from `choices[0].message.content`
+
+### Requirement: ASR and LLM provider selection is independent and migratable
+
+The system SHALL persist an explicit provider adapter ID for each provider kind.
+
+#### Scenario: A legacy configuration has no provider ID
+
+- **WHEN** the stored STT or LLM configuration predates explicit provider selection
+- **THEN** the storage migration boundary SHALL infer the compatible adapter once from the legacy endpoint/model
+- **AND** application services SHALL receive a normalized provider configuration with an explicit provider ID
+
+#### Scenario: The user selects an ASR provider
+
+- **WHEN** the user chooses an ASR provider in Settings
+- **THEN** the selected ASR adapter, endpoint, model, and credential slot SHALL be saved independently from LLM selection
+- **AND** React workflow code SHALL NOT branch on provider names or URLs
+
 ### Requirement: LLM providers expose plain-text and thinking capabilities
 
 The system SHALL integrate Dictation polish through a shared LLM provider
@@ -197,4 +221,3 @@ Dictation recording while preserving an incremental migration path.
 - **THEN** the coordinator MAY perform a bounded automatic retranscription
 - **AND** the archive SHALL be deleted after successful completion unless an
   explicit retention policy requires otherwise
-

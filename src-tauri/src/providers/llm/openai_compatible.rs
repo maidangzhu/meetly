@@ -1,4 +1,5 @@
-use super::{AssistantSuggestion, ChatMessage, LlmProvider};
+use super::{AssistantSuggestion, ChatMessage, LlmCapabilities, LlmProvider, ThinkingControl};
+use crate::providers::config::ProviderId;
 use crate::providers::credentials::ResolvedCredentials;
 use anyhow::{anyhow, Result};
 use serde_json::json;
@@ -24,7 +25,7 @@ impl OpenAiCompatibleLlm {
         }
     }
 
-    pub async fn complete_text(
+    async fn complete_text_request(
         &self,
         system_prompt: String,
         user_message: String,
@@ -96,6 +97,21 @@ impl OpenAiCompatibleLlm {
 
 #[async_trait::async_trait]
 impl LlmProvider for OpenAiCompatibleLlm {
+    fn id(&self) -> ProviderId {
+        ProviderId::OpenAiCompatible
+    }
+
+    fn capabilities(&self) -> LlmCapabilities {
+        LlmCapabilities {
+            supports_streaming: true,
+            thinking_control: if self.base_url.contains("siliconflow") {
+                ThinkingControl::ProviderSpecific
+            } else {
+                ThinkingControl::Unsupported
+            },
+        }
+    }
+
     async fn complete_messages(
         &self,
         system_prompt: String,
@@ -105,6 +121,17 @@ impl LlmProvider for OpenAiCompatibleLlm {
             .complete_raw(system_prompt, messages, 0.3, false)
             .await?;
         Ok(parse_suggestion(&content))
+    }
+
+    async fn complete_text(
+        &self,
+        system_prompt: String,
+        user_message: String,
+        temperature: f32,
+        disable_reasoning: bool,
+    ) -> Result<String> {
+        self.complete_text_request(system_prompt, user_message, temperature, disable_reasoning)
+            .await
     }
 }
 

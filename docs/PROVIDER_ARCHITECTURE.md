@@ -1,7 +1,7 @@
 # Provider Architecture
 
 Date: 2026-07-16
-Status: Proposed
+Status: Initial registry implemented; profile expansion and full failure migration remain proposed
 
 ## 1. Scope
 
@@ -226,7 +226,14 @@ error code, and short redacted previews. Logs must not include:
 The first registry migration wraps current behavior:
 
 - ASR: OpenAI-compatible multipart audio transcription;
+- ASR: Xiaomi MiMo Chat Completions audio transcription with adapter-owned
+  JSON/auth/response handling and shared 16 kHz mono WAV normalization;
 - LLM: OpenAI-compatible chat completion.
+
+The current UI stores one explicit active adapter ID per kind. Legacy configs
+without an adapter ID are normalized only in the storage migration boundary;
+workflow code does not inspect provider URLs. Multiple named profiles remain a
+later extension.
 
 Next likely adapters:
 
@@ -248,3 +255,6 @@ provider name inside Dictation, Meeting, Voice Ask, or Coach.
 6. Add multiple saved profiles and optional per-workflow selection only after
    the single-active-profile migration is stable.
 
+Current implementation has completed steps 1, 2, and 5 for the batch ASR path.
+Dictation coordinator ownership, multiple profiles, realtime adapters, and the
+remaining direct streaming LLM calls are still pending.

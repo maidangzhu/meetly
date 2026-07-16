@@ -1,6 +1,9 @@
-use super::config::{DiagnosticResult, ProviderConfig, ProviderKind};
+use super::config::{
+    provider_descriptors, DiagnosticResult, ProviderConfig, ProviderDescriptor, ProviderId,
+    ProviderKind,
+};
 use super::credentials;
-use super::stt::SttProvider as _;
+use super::stt::BatchAsrRequest;
 use super::{secrets, storage};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use tauri::AppHandle;
@@ -17,12 +20,28 @@ pub struct LlmRuntimeConfig {
 pub async fn save_provider_config(
     app: AppHandle,
     kind: ProviderKind,
+    provider_id: ProviderId,
     base_url: String,
     model: String,
     api_key: String,
 ) -> Result<(), String> {
-    storage::save_config(&app, kind, ProviderConfig { base_url, model })
-        .map_err(|error| error.to_string())?;
+    if !provider_id.supports(kind) {
+        return Err(format!(
+            "Provider {} does not support {}.",
+            provider_id.as_str(),
+            kind.as_str()
+        ));
+    }
+    storage::save_config(
+        &app,
+        kind,
+        ProviderConfig {
+            provider_id,
+            base_url,
+            model,
+        },
+    )
+    .map_err(|error| error.to_string())?;
 
     // Only write the Keychain entry if the caller actually provided a new
     // key. An empty string means "keep the existing key" (the Settings form
@@ -33,6 +52,11 @@ pub async fn save_provider_config(
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn list_provider_options(kind: ProviderKind) -> Vec<ProviderDescriptor> {
+    provider_descriptors(kind)
 }
 
 #[tauri::command]
@@ -130,8 +154,17 @@ pub async fn transcribe_audio(
     #[cfg(debug_assertions)]
     let failed_audio = audio_bytes.clone();
 
+    let capabilities = provider.capabilities();
+    let _ = crate::debug_log::append(&format!(
+        "[stt] provider={} wav_normalization={} language_hint={} max_duration_ms={:?}",
+        provider.id().as_str(),
+        capabilities.requires_wav_normalization,
+        capabilities.supports_language_hint,
+        capabilities.max_audio_duration_ms
+    ));
+
     provider
-        .transcribe(audio_bytes, &filename, &mime_type)
+        .transcribe(BatchAsrRequest::new(audio_bytes, &filename, &mime_type))
         .await
         .map(|text| {
             let _ = crate::debug_log::append(&format!(

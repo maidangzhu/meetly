@@ -34,13 +34,14 @@ validation, compact copied/failed browser previews, and `git diff --check` passe
 
 ## 4. Provider Registry
 
-- [ ] Add ASR and LLM capability models.
+- [x] Add ASR and LLM capability models.
 - [ ] Add normalized provider failure categories and retryability.
-- [ ] Add independent active ASR and active LLM selection.
-- [ ] Adapt the existing OpenAI-compatible STT provider to the ASR contract.
-- [ ] Adapt the existing OpenAI-compatible LLM provider to the LLM contract.
-- [ ] Add provider contract and diagnostics tests.
-- [ ] Preserve existing settings and credential migration behavior.
+- [x] Add independent active ASR and active LLM selection.
+- [x] Adapt the existing OpenAI-compatible STT provider to the ASR contract.
+- [x] Adapt the existing OpenAI-compatible LLM provider to the LLM contract.
+- [x] Add provider contract and diagnostics tests.
+- [x] Preserve existing settings and credential migration behavior.
+- [x] Add a Xiaomi MiMo batch ASR adapter with JSON audio transport and 16 kHz mono WAV normalization.
 
 ## 5. Polish Reliability
 
@@ -68,16 +69,21 @@ validation, compact copied/failed browser previews, and `git diff --check` passe
 - [ ] Add provider-aware long-audio chunking and transcript joining.
 - [ ] Add verbose-segment hallucination filtering only for providers that support it.
 - [ ] Add the first realtime ASR adapter behind the streaming capability contract.
-- [ ] Verify adding a provider does not change coordinator or UI state contracts.
+- [x] Verify adding a provider does not change coordinator or UI state contracts.
 
 ## 8. Final Verification
 
-- [ ] `pnpm test:dictation`
-- [ ] `pnpm test:voice-ask`
-- [ ] `pnpm test:wake`
-- [ ] `pnpm build`
-- [ ] `cargo test --lib`
-- [ ] `cargo check`
-- [ ] `npx @fission-ai/openspec validate stabilize-voice-dictation-runtime --type change`
-- [ ] `git diff --check`
+- [x] `pnpm test:dictation`
+- [x] `pnpm test:voice-ask`
+- [x] `pnpm test:wake`
+- [x] `pnpm build`
+- [x] `cargo test --lib`
+- [x] `cargo check`
+- [x] `npx @fission-ai/openspec validate stabilize-voice-dictation-runtime --type change`
+- [x] `git diff --check`
 - [ ] Manual acceptance matrix completed.
+
+Automated evidence (2026-07-16): 48 default Rust tests passed; the ignored
+real-provider MiMo silence probe passed using the saved local credential; the
+ignored local-audio normalization test passed against a real multi-fragment
+WKWebView AAC/MP4 failure artifact. No private audio fixture is stored in Git.

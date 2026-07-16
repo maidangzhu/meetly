@@ -59,6 +59,7 @@ pub fn run() {
             dictation::test_dictation_paste,
             providers::commands::save_provider_config,
             providers::commands::get_provider_config,
+            providers::commands::list_provider_options,
             providers::commands::has_api_key,
             providers::commands::test_stt_config,
             providers::commands::test_llm_config,

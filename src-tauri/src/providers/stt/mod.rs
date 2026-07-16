@@ -1,40 +1,64 @@
+mod audio_normalization;
+mod mimo;
 mod openai_compatible;
 
-use crate::providers::config::DiagnosticResult;
+use crate::providers::config::{DiagnosticResult, ProviderId, ProviderKind};
 use crate::providers::credentials;
-use anyhow::Result;
+use crate::providers::error::ProviderResult;
+use anyhow::{anyhow, Result};
 use tauri::AppHandle;
 
+pub use mimo::MimoStt;
 pub use openai_compatible::OpenAiCompatibleStt;
 
-/// Adapter interface for a speech-to-text provider. Implementations take a
-/// complete audio clip and return the transcribed text in one call; there
-/// is no streaming/partial variant (see
-/// openspec/changes/add-system-audio-transcription/design.md for why).
-/// `filename`/`mime_type` are passed through to the multipart upload as-is
-/// so the same adapter serves both the WAV segments produced by system
-/// audio VAD and arbitrary browser-recorded clips (webm/ogg) from the
-/// microphone Ask flow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AsrExecutionMode {
+    Batch,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AsrCapabilities {
+    pub execution_mode: AsrExecutionMode,
+    pub supports_language_hint: bool,
+    pub requires_wav_normalization: bool,
+    pub max_audio_duration_ms: Option<u64>,
+}
+
+pub struct BatchAsrRequest {
+    pub audio_bytes: Vec<u8>,
+    pub filename: String,
+    pub mime_type: String,
+}
+
+impl BatchAsrRequest {
+    pub fn new(audio_bytes: Vec<u8>, filename: &str, mime_type: &str) -> Self {
+        Self {
+            audio_bytes,
+            filename: filename.to_string(),
+            mime_type: mime_type.to_string(),
+        }
+    }
+}
+
 #[async_trait::async_trait]
 pub trait SttProvider: Send + Sync {
-    async fn transcribe(
-        &self,
-        audio_bytes: Vec<u8>,
-        filename: &str,
-        mime_type: &str,
-    ) -> Result<String>;
+    fn id(&self) -> ProviderId;
+    fn capabilities(&self) -> AsrCapabilities;
+    async fn transcribe(&self, request: BatchAsrRequest) -> ProviderResult<String>;
 }
 
-/// Builds an `SttProvider` from the currently saved config and Keychain API
-/// key. Returns an error if no key has been saved yet.
-pub fn build_from_saved_config(app: &AppHandle) -> Result<OpenAiCompatibleStt> {
-    let credentials = credentials::resolve(app, crate::providers::config::ProviderKind::Stt)?;
-    Ok(OpenAiCompatibleStt::new(credentials))
+pub fn build_from_saved_config(app: &AppHandle) -> Result<Box<dyn SttProvider>> {
+    let credentials = credentials::resolve(app, ProviderKind::Stt)?;
+    let provider: Box<dyn SttProvider> = match credentials.provider_id {
+        ProviderId::OpenAiCompatible => Box::new(OpenAiCompatibleStt::new(credentials)),
+        ProviderId::XiaomiMimo => Box::new(MimoStt::new(credentials)),
+    };
+    if !provider.id().supports(ProviderKind::Stt) {
+        return Err(anyhow!("Configured provider does not support ASR."));
+    }
+    Ok(provider)
 }
 
-/// Sends a tiny known-silence WAV sample to the configured STT endpoint and
-/// reports whether it was accepted. Used by the Settings page "Test
-/// connection" button; does not require a real recording.
 pub async fn test_connection(app: &AppHandle) -> DiagnosticResult {
     let provider = match build_from_saved_config(app) {
         Ok(provider) => provider,
@@ -46,15 +70,18 @@ pub async fn test_connection(app: &AppHandle) -> DiagnosticResult {
         }
     };
 
-    let silence_wav = openai_compatible::silence_probe_wav();
-
-    match provider
-        .transcribe(silence_wav, "probe.wav", "audio/wav")
-        .await
-    {
+    let request = BatchAsrRequest::new(
+        audio_normalization::silence_probe_wav(),
+        "probe.wav",
+        "audio/wav",
+    );
+    match provider.transcribe(request).await {
         Ok(_) => DiagnosticResult {
             success: true,
-            message: "STT endpoint reachable and accepted the test request.".to_string(),
+            message: format!(
+                "{} endpoint reachable and accepted the ASR test request.",
+                provider.id().as_str()
+            ),
         },
         Err(error) => DiagnosticResult {
             success: false,

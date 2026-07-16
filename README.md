@@ -171,6 +171,10 @@ model: Qwen/Qwen3-32B
 
 可以在设置页替换为其他兼容服务。API key 不会回传给前端读取。
 
+STT 设置支持显式选择 `OpenAI-compatible` 或 `Xiaomi MiMo`。MiMo 使用
+`mimo-v2.5-asr` 的 JSON `input_audio` 协议；Meetly 会在 Rust adapter 边界
+将麦克风 MP4/AAC 规范化为 16 kHz mono WAV，不需要用户手动转换音频。
+
 ### 权限说明
 
 | 权限 | 用途 | 什么时候需要 |

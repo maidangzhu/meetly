@@ -10,7 +10,7 @@
 use tauri::AppHandle;
 
 #[cfg(debug_assertions)]
-use super::config::{ProviderConfig, ProviderKind};
+use super::config::{infer_legacy_provider, ProviderConfig, ProviderKind};
 #[cfg(debug_assertions)]
 use super::{secrets, storage};
 
@@ -132,7 +132,16 @@ fn import(
     api_key: String,
     label: &str,
 ) {
-    if let Err(error) = storage::save_config(app, kind, ProviderConfig { base_url, model }) {
+    let provider_id = infer_legacy_provider(kind, &base_url, &model);
+    if let Err(error) = storage::save_config(
+        app,
+        kind,
+        ProviderConfig {
+            provider_id,
+            base_url,
+            model,
+        },
+    ) {
         tracing::warn!("Failed to seed {label} config from .env: {error}");
         return;
     }
