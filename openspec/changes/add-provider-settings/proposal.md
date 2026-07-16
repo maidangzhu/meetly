@@ -1,5 +1,10 @@
 # Proposal: add-provider-settings
 
+> Historical single-profile baseline. Shared adapter registries, capability
+> discovery, normalized provider failures, and future multi-profile migration
+> are documented in `docs/PROVIDER_ARCHITECTURE.md` and the follow-up change
+> `stabilize-voice-dictation-runtime`.
+
 ## Why
 
 Real STT and LLM integration needs somewhere to read provider configuration

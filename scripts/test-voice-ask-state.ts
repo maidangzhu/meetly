@@ -9,15 +9,39 @@ const firstStarted = voiceAskReducer(INITIAL_VOICE_ASK_STATE, {
   type: "start",
   runId: "voice-1",
   startedAt: 100,
+  context: {
+    selectedText: "A selected paragraph",
+    sourceApp: "TextEdit",
+    capturedAt: 90,
+  },
 });
 assert.equal(firstStarted.conversationId, "voice-1");
+assert.equal(firstStarted.context?.selectedText, "A selected paragraph");
 assert.equal(firstStarted.activeTurn?.phase, "opening_microphone");
 assert.equal(selectVoiceAskViewState(firstStarted).phase, "opening_microphone");
+
+const lateContextStarted = voiceAskReducer(INITIAL_VOICE_ASK_STATE, {
+  type: "start",
+  runId: "voice-late-context",
+  startedAt: 100,
+  context: null,
+});
+const lateContextCaptured = voiceAskReducer(lateContextStarted, {
+  type: "context",
+  runId: "voice-late-context",
+  context: {
+    selectedText: "Captured after recording started",
+    sourceApp: "TextEdit",
+    capturedAt: 120,
+  },
+});
+assert.equal(lateContextCaptured.context?.selectedText, "Captured after recording started");
 
 const duplicateStart = voiceAskReducer(firstStarted, {
   type: "start",
   runId: "voice-duplicate",
   startedAt: 101,
+  context: null,
 });
 assert.deepEqual(duplicateStart, firstStarted);
 
@@ -50,8 +74,14 @@ const followUpStarted = voiceAskReducer(firstAnswered, {
   type: "start",
   runId: "voice-2",
   startedAt: 300,
+  context: {
+    selectedText: "A different selection",
+    sourceApp: "Safari",
+    capturedAt: 290,
+  },
 });
 assert.equal(followUpStarted.conversationId, "voice-1");
+assert.equal(followUpStarted.context?.selectedText, "A selected paragraph");
 assert.equal(followUpStarted.turns.length, 1);
 assert.equal(followUpStarted.activeTurn?.runId, "voice-2");
 
@@ -74,6 +104,7 @@ const retryStarted = voiceAskReducer(followUpFailed, {
   type: "start",
   runId: "voice-3",
   startedAt: 400,
+  context: null,
 });
 const retryCancelled = voiceAskReducer(retryStarted, {
   type: "cancelled",

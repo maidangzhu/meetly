@@ -1,12 +1,14 @@
 import type { AssistantSuggestion } from "../types";
 import type {
   VoiceAskActivePhase,
+  VoiceAskContext,
   VoiceAskConversationState,
   VoiceAskViewState,
 } from "./types";
 
 export const INITIAL_VOICE_ASK_STATE: VoiceAskConversationState = {
   conversationId: null,
+  context: null,
   turns: [],
   activeTurn: null,
   error: null,
@@ -14,7 +16,8 @@ export const INITIAL_VOICE_ASK_STATE: VoiceAskConversationState = {
 };
 
 export type VoiceAskAction =
-  | { type: "start"; runId: string; startedAt: number }
+  | { type: "start"; runId: string; startedAt: number; context: VoiceAskContext | null }
+  | { type: "context"; runId: string; context: VoiceAskContext | null }
   | { type: "phase"; runId: string; phase: VoiceAskActivePhase; message?: string | null }
   | { type: "question"; runId: string; question: string }
   | { type: "answered"; runId: string; suggestion: AssistantSuggestion; createdAt: number }
@@ -31,6 +34,7 @@ export function voiceAskReducer(
     return {
       ...state,
       conversationId: state.conversationId ?? action.runId,
+      context: state.conversationId ? state.context : action.context,
       activeTurn: {
         runId: action.runId,
         phase: "opening_microphone",
@@ -45,6 +49,13 @@ export function voiceAskReducer(
 
   if (action.type === "reset") {
     return INITIAL_VOICE_ASK_STATE;
+  }
+
+  if (action.type === "context") {
+    if (state.conversationId !== action.runId || state.context || !action.context) {
+      return state;
+    }
+    return { ...state, context: action.context };
   }
 
   if (!state.activeTurn || !("runId" in action) || action.runId !== state.activeTurn.runId) {

@@ -6,14 +6,15 @@ export const INITIAL_DICTATION_STATE: DictationViewState = {
   message: null,
   rawText: null,
   finalText: null,
+  deliveryRetryable: false,
 };
 
 export type DictationAction =
   | { type: "start"; runId: string }
   | { type: "phase"; runId: string; phase: DictationPhase; message?: string | null }
   | { type: "transcribed"; runId: string; rawText: string }
-  | { type: "finished"; runId: string; phase: "completed" | "copied"; finalText: string; message: string }
-  | { type: "paste_failed"; runId: string; finalText: string; message: string }
+  | { type: "finished"; runId: string; phase: "completed" | "copied"; finalText: string; message: string; retryable: boolean }
+  | { type: "delivery_failed"; runId: string; finalText: string; message: string; retryable: boolean }
   | { type: "failed"; runId: string; message: string }
   | { type: "cancelled"; runId: string }
   | { type: "blocked"; message: string }
@@ -33,6 +34,7 @@ export function dictationReducer(
       message: "正在打开麦克风",
       rawText: null,
       finalText: null,
+      deliveryRetryable: false,
     };
   }
 
@@ -66,13 +68,15 @@ export function dictationReducer(
         phase: action.phase,
         finalText: action.finalText,
         message: action.message,
+        deliveryRetryable: action.retryable,
       };
-    case "paste_failed":
+    case "delivery_failed":
       return {
         ...state,
-        phase: "paste_failed",
+        phase: "delivery_failed",
         finalText: action.finalText,
         message: action.message,
+        deliveryRetryable: action.retryable,
       };
     case "failed":
       return { ...state, phase: "error", message: action.message };

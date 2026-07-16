@@ -69,6 +69,7 @@ pub fn run() {
             app::assistant_service::ask_assistant,
             app::assistant_service::ask_assistant_with_question,
             app::assistant_service::complete_assistant_with_question,
+            app::assistant_service::complete_voice_ask,
             app::report_service::generate_interview_report,
         ])
         .setup(|app| {

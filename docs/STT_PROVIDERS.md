@@ -1,5 +1,14 @@
 # STT Providers
 
+> Historical note (2026-07-16): this document records the early Meeting
+> realtime-STT provider direction. The shared ASR/LLM registry, provider
+> profiles, capability discovery, normalized errors, and Dictation provider
+> migration are now defined in
+> [`PROVIDER_ARCHITECTURE.md`](./PROVIDER_ARCHITECTURE.md) and
+> [`VOICE_DICTATION_RUNTIME_DESIGN.md`](./VOICE_DICTATION_RUNTIME_DESIGN.md).
+> Existing implementation remains batch OpenAI-compatible until the new
+> OpenSpec steps are implemented.
+
 ## 1. 结论
 
 第一版只接一个国内实时 STT：阿里云百炼/Model Studio 实时语音识别。
@@ -177,4 +186,3 @@ pub enum SttEvent {
 - 本地 VAD 更精确。
 - 会议结束后不自动转写全量。
 - 对低价值片段不送 LLM。
-

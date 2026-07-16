@@ -1,4 +1,4 @@
-use super::{AssistantSuggestion, LlmProvider};
+use super::{AssistantSuggestion, ChatMessage, LlmProvider};
 use crate::providers::credentials::ResolvedCredentials;
 use anyhow::{anyhow, Result};
 use serde_json::json;
@@ -31,12 +31,35 @@ impl OpenAiCompatibleLlm {
         temperature: f32,
         disable_reasoning: bool,
     ) -> Result<String> {
+        self.complete_raw(
+            system_prompt,
+            vec![ChatMessage::user(user_message)],
+            temperature,
+            disable_reasoning,
+        )
+        .await
+    }
+
+    async fn complete_raw(
+        &self,
+        system_prompt: String,
+        messages: Vec<ChatMessage>,
+        temperature: f32,
+        disable_reasoning: bool,
+    ) -> Result<String> {
+        let mut request_messages = vec![json!({
+            "role": "system",
+            "content": system_prompt,
+        })];
+        request_messages.extend(
+            messages
+                .into_iter()
+                .map(|message| serde_json::to_value(message))
+                .collect::<std::result::Result<Vec<_>, _>>()?,
+        );
         let mut body = json!({
             "model": self.model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message},
-            ],
+            "messages": request_messages,
             "temperature": temperature,
             "stream": false,
         });
@@ -73,13 +96,13 @@ impl OpenAiCompatibleLlm {
 
 #[async_trait::async_trait]
 impl LlmProvider for OpenAiCompatibleLlm {
-    async fn complete(
+    async fn complete_messages(
         &self,
         system_prompt: String,
-        user_message: String,
+        messages: Vec<ChatMessage>,
     ) -> Result<AssistantSuggestion> {
         let content = self
-            .complete_text(system_prompt, user_message, 0.3, false)
+            .complete_raw(system_prompt, messages, 0.3, false)
             .await?;
         Ok(parse_suggestion(&content))
     }

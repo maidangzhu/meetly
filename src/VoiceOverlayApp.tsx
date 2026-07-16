@@ -1,11 +1,12 @@
-import { Check, Loader2, MessageCircle, RotateCcw, X } from "lucide-react";
+import { Check, Loader2, MessageCircle, RotateCcw, TextQuote, X } from "lucide-react";
 import { useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useDictation } from "./app/dictation/useDictation";
 import type { DictationViewState } from "./app/dictation/types";
 import { debugLog, safeInvoke } from "./app/platform";
-import type { VoiceAskViewState } from "./app/voiceAsk/types";
+import type { VoiceAskConversationState, VoiceAskViewState } from "./app/voiceAsk/types";
+import type { AssistantSuggestion } from "./app/types";
 import { useVoiceAsk } from "./app/voiceAsk/useVoiceAsk";
 import { AudioBars } from "./components/AudioBars";
 
@@ -13,6 +14,11 @@ const COMPACT_OVERLAY_WIDTH = 320;
 const COMPACT_OVERLAY_HEIGHT = 68;
 const ANSWER_OVERLAY_WIDTH = 480;
 const ANSWER_OVERLAY_HEIGHT = 300;
+const ANSWER_PANEL_HEIGHT = ANSWER_OVERLAY_HEIGHT - 20;
+const FOLLOWUP_PILL_HEIGHT = 48;
+const FOLLOWUP_PILL_GAP = 8;
+const FOLLOWUP_OVERLAY_HEIGHT =
+  ANSWER_OVERLAY_HEIGHT + FOLLOWUP_PILL_HEIGHT + FOLLOWUP_PILL_GAP;
 
 export function VoiceOverlayApp() {
   const dictation = useDictation();
@@ -20,9 +26,48 @@ export function VoiceOverlayApp() {
   const dictationPreviewPhase = import.meta.env.DEV
     ? new URLSearchParams(window.location.search).get("dictation")
     : null;
+  const dictationPreviewRetryable = import.meta.env.DEV
+    ? new URLSearchParams(window.location.search).get("retryable") === "true"
+    : false;
   const voiceAskPreviewPhase = import.meta.env.DEV
     ? new URLSearchParams(window.location.search).get("voiceAsk")
     : null;
+  const voiceAskPreviewSuggestion: AssistantSuggestion = {
+    answer:
+      "这段文字强调的是：选区只提供讨论背景，真正要执行的任务仍由用户当前说出的要求决定。",
+    bullets: ["保留原文语义", "根据当前问题决定翻译、解释或批评"],
+    clarifyingQuestion: null,
+  };
+  const voiceAskPreviewConversation: VoiceAskConversationState = voiceAskPreviewPhase === "thread" || voiceAskPreviewPhase === "followup"
+    ? {
+        conversationId: "voice-preview-conversation",
+        context: {
+          selectedText: "Context should inform the conversation without predetermining the user's intent.",
+          sourceApp: "TextEdit",
+          capturedAt: Date.now(),
+        },
+        turns: [
+          {
+            id: "voice-preview-turn-1",
+            runId: "voice-preview-turn-1",
+            question: "这段话是什么意思？",
+            suggestion: voiceAskPreviewSuggestion,
+            createdAt: Date.now(),
+          },
+        ],
+        activeTurn: voiceAskPreviewPhase === "followup"
+          ? {
+              runId: "voice-preview-followup",
+              phase: "recording",
+              message: "松开 Fn 即可追问",
+              question: null,
+              startedAt: Date.now(),
+            }
+          : null,
+        error: null,
+        terminalPhase: null,
+      }
+    : voiceAsk.conversation;
   const dictationState: DictationViewState = dictationPreviewPhase
     ? {
         runId: "dictation-preview",
@@ -30,15 +75,24 @@ export function VoiceOverlayApp() {
         message: dictationPreviewPhase === "recording" ? "再次按下即可转写" : "正在转写",
         rawText: null,
         finalText: null,
+        deliveryRetryable: dictationPreviewRetryable,
       }
     : dictation.state;
   const voiceAskState: VoiceAskViewState = voiceAskPreviewPhase
     ? {
         runId: "voice-ask-preview",
-        phase: voiceAskPreviewPhase as VoiceAskViewState["phase"],
+        phase: voiceAskPreviewPhase === "thread"
+          ? "answered"
+          : voiceAskPreviewPhase === "followup"
+            ? "recording"
+            : voiceAskPreviewPhase as VoiceAskViewState["phase"],
         message: voiceAskPreviewPhase === "recording" ? "松开 Fn 即可提问" : "Thinking...",
-        question: voiceAskPreviewPhase === "answered" ? "如何把一个复杂问题讲清楚？" : null,
-        suggestion: voiceAskPreviewPhase === "answered"
+        question: voiceAskPreviewPhase === "answered" || voiceAskPreviewPhase === "thread"
+          ? "如何把一个复杂问题讲清楚？"
+          : null,
+        suggestion: voiceAskPreviewPhase === "thread"
+          ? voiceAskPreviewSuggestion
+          : voiceAskPreviewPhase === "answered"
           ? {
               answer:
                 "## 核心结论\n\n先给结论，再解释判断依据，最后用一个具体例子说明它如何落地。\n\n- 一句话说清核心判断\n- 用 `Fn` 快速提问\n\n> 只保留真正支持结论的证据。",
@@ -51,13 +105,21 @@ export function VoiceOverlayApp() {
   const dictationVisible = dictationState.phase !== "idle";
   const voiceAskVisible = voiceAskState.phase !== "idle";
   const visible = voiceAskVisible || dictationVisible;
-  const voiceAskHasAnswer = voiceAskState.phase === "answered" || voiceAskState.phase === "error";
+  const voiceAskHasAnswer =
+    voiceAskPreviewConversation.turns.length > 0 ||
+    voiceAskState.phase === "answered" ||
+    voiceAskState.phase === "error";
+  const voiceAskHasActiveFollowup =
+    voiceAskPreviewConversation.turns.length > 0 &&
+    voiceAskPreviewConversation.activeTurn !== null;
   const width = voiceAskVisible && voiceAskHasAnswer
     ? ANSWER_OVERLAY_WIDTH
     : COMPACT_OVERLAY_WIDTH;
-  const height = voiceAskVisible && voiceAskHasAnswer
-    ? ANSWER_OVERLAY_HEIGHT
-    : COMPACT_OVERLAY_HEIGHT;
+  const height = voiceAskVisible && voiceAskHasActiveFollowup
+    ? FOLLOWUP_OVERLAY_HEIGHT
+    : voiceAskVisible && voiceAskHasAnswer
+      ? ANSWER_OVERLAY_HEIGHT
+      : COMPACT_OVERLAY_HEIGHT;
 
   useEffect(() => {
     void safeInvoke("set_voice_overlay_mode", { visible, width, height }).catch((error) => {
@@ -77,6 +139,7 @@ export function VoiceOverlayApp() {
         {voiceAskVisible ? (
           <VoiceAskOverlay
             state={voiceAskState}
+            conversation={voiceAskPreviewConversation}
             audioLevel={voiceAskPreviewPhase ? 0.68 : voiceAsk.audioLevel}
             close={voiceAsk.close}
           />
@@ -85,7 +148,7 @@ export function VoiceOverlayApp() {
             state={dictationState}
             audioLevel={dictationPreviewPhase ? 0.68 : dictation.audioLevel}
             cancel={dictation.cancel}
-            dismissFailure={dictation.dismissFailure}
+            dismissDelivery={dictation.dismissDelivery}
             finishRecording={dictation.finishRecording}
             retryPaste={dictation.retryPaste}
           />
@@ -97,14 +160,26 @@ export function VoiceOverlayApp() {
 
 function VoiceAskOverlay({
   state,
+  conversation,
   audioLevel,
   close,
 }: {
   state: VoiceAskViewState;
+  conversation: VoiceAskConversationState;
   audioLevel: number;
   close: () => void;
 }) {
   const isThinking = state.phase === "transcribing" || state.phase === "thinking";
+
+  if (conversation.turns.length > 0) {
+    return (
+      <VoiceAskConversationPanel
+        conversation={conversation}
+        audioLevel={audioLevel}
+        close={close}
+      />
+    );
+  }
 
   if (isThinking) {
     return (
@@ -150,32 +225,7 @@ function VoiceAskOverlay({
             <p className="m-0 text-[13px] leading-relaxed text-[#ff9ba8]">{state.message}</p>
           ) : (
             <>
-              <div className="voice-answer-markdown">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    a: ({ children, href }) => (
-                      <a href={href} target="_blank" rel="noreferrer">
-                        {children}
-                      </a>
-                    ),
-                  }}
-                >
-                  {state.suggestion?.answer ?? ""}
-                </ReactMarkdown>
-              </div>
-              {state.suggestion && state.suggestion.bullets.length > 0 && (
-                <ul className="mt-3 grid gap-1.5 pl-4 text-[12px] leading-relaxed text-white/62">
-                  {state.suggestion.bullets.map((bullet, index) => (
-                    <li key={`${bullet}-${index}`}>{bullet}</li>
-                  ))}
-                </ul>
-              )}
-              {state.suggestion?.clarifyingQuestion && (
-                <p className="mt-3 mb-0 border-t border-white/[0.08] pt-3 text-[12px] leading-relaxed text-white/58">
-                  {state.suggestion.clarifyingQuestion}
-                </p>
-              )}
+              {state.suggestion && <SuggestionContent suggestion={state.suggestion} />}
             </>
           )}
         </div>
@@ -219,18 +269,142 @@ function VoiceAskOverlay({
   );
 }
 
+function VoiceAskConversationPanel({
+  conversation,
+  audioLevel,
+  close,
+}: {
+  conversation: VoiceAskConversationState;
+  audioLevel: number;
+  close: () => void;
+}) {
+  return (
+    <div className="relative h-full w-full">
+      <section
+        className="absolute inset-x-0 top-0 flex w-full flex-col overflow-hidden rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.96)] backdrop-blur-2xl"
+        style={{ height: ANSWER_PANEL_HEIGHT }}
+        aria-label="AI 对话"
+        aria-live="polite"
+      >
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-white/[0.08] px-3.5">
+          <MessageCircle className="h-4 w-4 text-[#c99575]" />
+          <span className="text-[13px] font-semibold text-white/82">Ask AI</span>
+          <span className="text-[10px] text-white/32">{conversation.turns.length} 轮</span>
+          <button
+            type="button"
+            className="voice-icon-button ml-auto"
+            title="关闭"
+            aria-label="关闭对话"
+            onClick={close}
+          >
+            <X />
+          </button>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3.5">
+          {conversation.context && (
+            <div className="mb-3 border-l-2 border-[#c99575]/45 pl-3 text-[11px] leading-relaxed text-white/46">
+              <div className="mb-1 flex items-center gap-1.5 text-[10px] text-white/32">
+                <TextQuote className="h-3 w-3" />
+                <span>{conversation.context.sourceApp ?? "所选文本"}</span>
+              </div>
+              <p className="m-0 line-clamp-3" title={conversation.context.selectedText}>
+                {conversation.context.selectedText}
+              </p>
+            </div>
+          )}
+
+          {conversation.turns.map((turn, index) => (
+            <article
+              key={turn.id}
+              className={index > 0 ? "mt-4 border-t border-white/[0.08] pt-4" : undefined}
+            >
+              <p className="m-0 mb-2 text-[11px] leading-relaxed text-white/38">
+                {turn.question}
+              </p>
+              <SuggestionContent suggestion={turn.suggestion} />
+            </article>
+          ))}
+        </div>
+
+        {conversation.error && (
+          <div className="shrink-0 border-t border-white/[0.08] px-3.5 py-2 text-[11px] text-[#ff9ba8]">
+            {conversation.error.message}
+          </div>
+        )}
+      </section>
+
+      {conversation.activeTurn && (
+        <div
+          className="absolute left-1/2 flex -translate-x-1/2 items-center justify-center rounded-full border border-white/[0.13] bg-[rgb(20_21_22_/_0.97)] px-5 shadow-[0_10px_28px_rgb(0_0_0_/_0.32),inset_0_1px_0_rgb(255_255_255_/_0.04)] backdrop-blur-2xl"
+          style={{
+            top: ANSWER_PANEL_HEIGHT + FOLLOWUP_PILL_GAP,
+            width: 188,
+            height: FOLLOWUP_PILL_HEIGHT,
+          }}
+          aria-label={
+            conversation.activeTurn.phase === "recording" ? "正在录制追问" : "正在处理追问"
+          }
+          aria-live="polite"
+        >
+          {conversation.activeTurn.phase === "recording" ? (
+            <div className="w-24">
+              <AudioBars level={audioLevel} tone="warm" variant="compact" />
+            </div>
+          ) : (
+            <Loader2 className="h-4 w-4 animate-spin text-[#c99575]" />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SuggestionContent({ suggestion }: { suggestion: AssistantSuggestion }) {
+  return (
+    <>
+      <div className="voice-answer-markdown">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            a: ({ children, href }) => (
+              <a href={href} target="_blank" rel="noreferrer">
+                {children}
+              </a>
+            ),
+          }}
+        >
+          {suggestion.answer}
+        </ReactMarkdown>
+      </div>
+      {suggestion.bullets.length > 0 && (
+        <ul className="mt-3 grid gap-1.5 pl-4 text-[12px] leading-relaxed text-white/62">
+          {suggestion.bullets.map((bullet, index) => (
+            <li key={`${bullet}-${index}`}>{bullet}</li>
+          ))}
+        </ul>
+      )}
+      {suggestion.clarifyingQuestion && (
+        <p className="mt-3 mb-0 border-t border-white/[0.08] pt-3 text-[12px] leading-relaxed text-white/58">
+          {suggestion.clarifyingQuestion}
+        </p>
+      )}
+    </>
+  );
+}
+
 function DictationBubble({
   state,
   audioLevel,
   cancel,
-  dismissFailure,
+  dismissDelivery,
   finishRecording,
   retryPaste,
 }: {
   state: DictationViewState;
   audioLevel: number;
   cancel: () => void;
-  dismissFailure: () => void;
+  dismissDelivery: () => void;
   finishRecording: () => void;
   retryPaste: () => void;
 }) {
@@ -253,37 +427,42 @@ function DictationBubble({
     );
   }
 
-  if (state.phase === "paste_failed") {
+  if (state.phase === "delivery_failed" || (state.phase === "copied" && state.deliveryRetryable)) {
+    const copiedFallback = state.phase === "copied";
     return (
       <section
         className="voice-surface flex h-12 w-full select-none items-center gap-2 p-2"
-        aria-label="语音输入粘贴失败"
-        aria-live="assertive"
+        aria-label={copiedFallback ? "语音输入已复制" : "语音输入写入失败"}
+        aria-live={copiedFallback ? "polite" : "assertive"}
       >
         <button
           type="button"
           className="voice-toolbar-button"
           title="关闭"
-          aria-label="关闭粘贴失败提示"
-          onClick={dismissFailure}
+          aria-label="关闭语音输入结果"
+          onClick={dismissDelivery}
         >
           <X />
         </button>
         <span
-          className="min-w-0 flex-1 truncate text-center text-[12px] font-medium text-[#e2a2a7]"
+          className={copiedFallback
+            ? "min-w-0 flex-1 truncate text-center text-[12px] font-medium text-[#64e594]"
+            : "min-w-0 flex-1 truncate text-center text-[12px] font-medium text-[#e2a2a7]"}
           title={state.message ?? undefined}
         >
-          已失败
+          {copiedFallback ? "已复制，可重试粘贴" : "写入剪贴板失败"}
         </span>
-        <button
-          type="button"
-          className="voice-icon-button voice-icon-button--primary"
-          title="重试粘贴"
-          aria-label="重试粘贴"
-          onClick={retryPaste}
-        >
-          <RotateCcw />
-        </button>
+        {state.deliveryRetryable && (
+          <button
+            type="button"
+            className="voice-icon-button voice-icon-button--primary"
+            title="重试粘贴"
+            aria-label="重试粘贴"
+            onClick={retryPaste}
+          >
+            <RotateCcw />
+          </button>
+        )}
       </section>
     );
   }
@@ -353,10 +532,11 @@ function dictationPhaseLabel(phase: DictationViewState["phase"]) {
     case "pasting":
       return "写入中";
     case "completed":
-    case "copied":
       return "完成";
-    case "paste_failed":
-      return "已失败";
+    case "copied":
+      return "已复制";
+    case "delivery_failed":
+      return "写入失败";
     case "cancelled":
       return "已取消";
     case "blocked":

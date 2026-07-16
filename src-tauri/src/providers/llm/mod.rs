@@ -26,17 +26,55 @@ pub struct AssistantSuggestion {
     pub clarifying_question: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ChatRole {
+    User,
+    Assistant,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessage {
+    pub role: ChatRole,
+    pub content: String,
+}
+
+impl ChatMessage {
+    pub fn user(content: impl Into<String>) -> Self {
+        Self {
+            role: ChatRole::User,
+            content: content.into(),
+        }
+    }
+
+    pub fn assistant(content: impl Into<String>) -> Self {
+        Self {
+            role: ChatRole::Assistant,
+            content: content.into(),
+        }
+    }
+}
+
 /// Adapter interface for an LLM provider. One non-streaming call in, one
 /// complete structured suggestion out (see
 /// openspec/changes/add-llm-suggestions/design.md for why this is
 /// non-streaming).
 #[async_trait::async_trait]
 pub trait LlmProvider: Send + Sync {
+    async fn complete_messages(
+        &self,
+        system_prompt: String,
+        messages: Vec<ChatMessage>,
+    ) -> Result<AssistantSuggestion>;
+
     async fn complete(
         &self,
         system_prompt: String,
         user_message: String,
-    ) -> Result<AssistantSuggestion>;
+    ) -> Result<AssistantSuggestion> {
+        self.complete_messages(system_prompt, vec![ChatMessage::user(user_message)])
+            .await
+    }
 }
 
 /// Builds an `LlmProvider` from the currently saved config and Keychain API

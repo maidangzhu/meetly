@@ -90,10 +90,6 @@ pub(crate) fn prepare_dictation_overlay(app: &AppHandle) {
     prepare_compact_overlay(app, "dictation");
 }
 
-pub(crate) fn prepare_voice_ask_overlay(app: &AppHandle) {
-    prepare_compact_overlay(app, "voice-ask");
-}
-
 fn prepare_compact_overlay(app: &AppHandle, kind: &str) {
     let app_for_task = app.clone();
     let kind = kind.to_string();

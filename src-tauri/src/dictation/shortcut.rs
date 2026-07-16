@@ -228,6 +228,7 @@ fn start_native(
 
 fn dispatch_actions(app: &AppHandle, actions: Vec<ShortcutAction>) {
     for action in actions {
+        let _ = crate::debug_log::append(&format!("[voice-shortcut] action={action:?}"));
         match action {
             ShortcutAction::DictationPressed => super::handle_shortcut_event(app, true),
             ShortcutAction::SwitchVoiceAskToDictation => super::switch_voice_ask_to_dictation(app),

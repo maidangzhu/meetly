@@ -4,11 +4,19 @@ use tauri::AppHandle;
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tokio::time::{sleep, Duration};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DictationDeliveryOutcome {
+    Pasted,
+    Copied,
+    Failed,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DictationOutputResult {
-    pub pasted: bool,
-    pub copied: bool,
+    pub outcome: DictationDeliveryOutcome,
+    pub retryable: bool,
     pub message: String,
 }
 
@@ -19,7 +27,7 @@ pub async fn deliver<F>(
     auto_paste: bool,
     keep_result_in_clipboard: bool,
     can_paste: F,
-) -> Result<DictationOutputResult, String>
+) -> DictationOutputResult
 where
     F: Fn() -> bool,
 {
@@ -28,42 +36,62 @@ where
     } else {
         app.clipboard().read_text().ok()
     };
-    app.clipboard()
-        .write_text(text)
-        .map_err(|error| format!("Failed to write clipboard: {error}"))?;
+    if let Err(error) = app.clipboard().write_text(text) {
+        return failed(&format!("Failed to write clipboard: {error}"), true);
+    }
 
     if !auto_paste {
-        return Ok(copied("Text copied to clipboard."));
+        return copied("Text copied to clipboard.", false);
     }
 
     if !can_paste() {
-        return Ok(copied("Dictation was cancelled. Text was copied."));
+        return copied("Dictation was cancelled. Text was copied.", false);
     }
 
     if !handy_keys::check_accessibility() {
-        return Ok(copied(
+        return copied(
             "Accessibility permission is required for automatic paste. Text was copied.",
-        ));
+            false,
+        );
     }
 
     let Some(target) = target else {
-        return Ok(copied(
+        return copied(
             "The original target is unavailable. Text was copied.",
-        ));
+            false,
+        );
     };
 
     if !super::target::activate(app, target).await {
         let _ = crate::debug_log::append("[dictation-output] target activation failed");
-        return Ok(copied("The original app is unavailable. Text was copied."));
+        return copied("The original app is unavailable. Text was copied.", true);
     }
 
     sleep(Duration::from_millis(90)).await;
     if !can_paste() {
-        return Ok(copied("Dictation was cancelled. Text was copied."));
+        return copied("Dictation was cancelled. Text was copied.", false);
+    }
+
+    if let Err(error) = super::target::restore_focus(target) {
+        let _ = crate::debug_log::append(&format!(
+            "[dictation-output] target focus restore unavailable; continuing with app-level paste error={error}"
+        ));
+    }
+
+    sleep(Duration::from_millis(35)).await;
+    if !can_paste() {
+        return copied("Dictation was cancelled. Text was copied.", false);
     }
     let _ = crate::debug_log::append("[dictation-output] posting Command+V with CGEvent");
-    send_paste()
-        .map_err(|error| format!("Text was copied, but automatic paste failed: {error}"))?;
+    if let Err(error) = send_paste() {
+        let _ = crate::debug_log::append(&format!(
+            "[dictation-output] Command+V failed; text remains copied error={error}"
+        ));
+        return copied(
+            &format!("Text was copied, but automatic paste failed: {error}"),
+            true,
+        );
+    }
     let _ = crate::debug_log::append("[dictation-output] Command+V posted");
 
     if let Some(previous) = previous_clipboard {
@@ -71,21 +99,45 @@ where
         let _ = app.clipboard().write_text(previous);
     }
 
-    Ok(DictationOutputResult {
-        pasted: true,
-        copied: true,
+    DictationOutputResult {
+        outcome: DictationDeliveryOutcome::Pasted,
+        retryable: false,
         message: format!(
             "Pasted into {}.",
             target.app_name.as_deref().unwrap_or("the original app")
         ),
-    })
+    }
 }
 
-fn copied(message: &str) -> DictationOutputResult {
+fn copied(message: &str, retryable: bool) -> DictationOutputResult {
     DictationOutputResult {
-        pasted: false,
-        copied: true,
+        outcome: DictationDeliveryOutcome::Copied,
+        retryable,
         message: message.to_string(),
+    }
+}
+
+fn failed(message: &str, retryable: bool) -> DictationOutputResult {
+    DictationOutputResult {
+        outcome: DictationDeliveryOutcome::Failed,
+        retryable,
+        message: message.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn copied_and_failed_results_keep_explicit_retryability() {
+        let copied = copied("copied", true);
+        assert_eq!(copied.outcome, DictationDeliveryOutcome::Copied);
+        assert!(copied.retryable);
+
+        let failed = failed("failed", false);
+        assert_eq!(failed.outcome, DictationDeliveryOutcome::Failed);
+        assert!(!failed.retryable);
     }
 }
 

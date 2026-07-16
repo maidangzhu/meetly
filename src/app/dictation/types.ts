@@ -17,7 +17,7 @@ export type DictationPhase =
   | "transcribing"
   | "polishing"
   | "pasting"
-  | "paste_failed"
+  | "delivery_failed"
   | "completed"
   | "copied"
   | "cancelled"
@@ -30,6 +30,7 @@ export type DictationViewState = {
   message: string | null;
   rawText: string | null;
   finalText: string | null;
+  deliveryRetryable: boolean;
 };
 
 export type DictationShortcutPressed = {
@@ -48,8 +49,8 @@ export type DictationBlocked = {
 };
 
 export type DictationOutputResult = {
-  pasted: boolean;
-  copied: boolean;
+  outcome: "pasted" | "copied" | "failed";
+  retryable: boolean;
   message: string;
 };
 

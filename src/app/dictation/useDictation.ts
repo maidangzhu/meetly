@@ -4,7 +4,7 @@ import { useEffect, useReducer, useRef, useState } from "react";
 import { blobToBase64, debugLog, isTauriRuntime } from "../platform";
 import { startMicrophoneClip, type MicrophoneClipSession } from "../microphoneClip";
 import { dictationReducer, INITIAL_DICTATION_STATE } from "./dictationReducer";
-import { chooseDictationOutput } from "./output";
+import { chooseDictationOutput, classifyDictationDelivery } from "./output";
 import type {
   DictationBlocked,
   DictationOutputResult,
@@ -172,21 +172,30 @@ export function useDictation() {
       if (cancelledRef.current || currentRunRef.current !== runId) return;
 
       debugLog(
-        `[dictation] output complete run=${runId} duration_ms=${Math.round(performance.now() - pasteStartedAt)} pasted=${output.pasted} copied=${output.copied}`
+        `[dictation] output complete run=${runId} duration_ms=${Math.round(performance.now() - pasteStartedAt)} outcome=${output.outcome} retryable=${output.retryable}`
       );
 
-      if (output.pasted || !autoPaste) {
+      const deliveryPhase = classifyDictationDelivery(output);
+      if (deliveryPhase !== "delivery_failed") {
         debugLog(`[dictation] complete run=${runId} chars=${finalText.length}`);
-        currentRunRef.current = null;
-        dispatch({ type: "reset", runId });
+        dispatch({
+          type: "finished",
+          runId,
+          phase: deliveryPhase,
+          finalText,
+          message: output.message,
+          retryable: output.retryable,
+        });
+        if (!output.retryable) scheduleReset(runId);
         return;
       }
 
       dispatch({
-        type: "paste_failed",
+        type: "delivery_failed",
         runId,
         finalText,
         message: output.message,
+        retryable: output.retryable,
       });
     } catch (error) {
       if (cancelledRef.current || currentRunRef.current !== runId) return;
@@ -194,7 +203,7 @@ export function useDictation() {
       debugLog(
         `[dictation] output failed run=${runId} duration_ms=${Math.round(performance.now() - pasteStartedAt)} reason=${message}`
       );
-      dispatch({ type: "paste_failed", runId, finalText, message });
+      dispatch({ type: "delivery_failed", runId, finalText, message, retryable: true });
     } finally {
       outputInFlightRef.current = false;
     }
@@ -309,13 +318,18 @@ export function useDictation() {
 
   const retryPaste = () => {
     const runId = currentRunRef.current;
-    if (!runId || state.phase !== "paste_failed" || !state.finalText) return;
+    if (
+      !runId ||
+      !["copied", "delivery_failed"].includes(state.phase) ||
+      !state.deliveryRetryable ||
+      !state.finalText
+    ) return;
     void deliverText(runId, state.finalText, true);
   };
 
-  const dismissFailure = () => {
+  const dismissDelivery = () => {
     const runId = currentRunRef.current;
-    if (state.phase !== "paste_failed") return;
+    if (!["copied", "delivery_failed"].includes(state.phase)) return;
     if (!runId) {
       dispatch({ type: "reset" });
       return;
@@ -328,5 +342,5 @@ export function useDictation() {
     });
   };
 
-  return { state, audioLevel, cancel, dismissFailure, finishRecording, retryPaste };
+  return { state, audioLevel, cancel, dismissDelivery, finishRecording, retryPaste };
 }

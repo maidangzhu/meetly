@@ -2,7 +2,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
 import { OnboardingPanel, type OnboardingStatus } from "./settings/OnboardingPanel";
 import { UpdateSection } from "./settings/UpdateSection";
-import type { DictationSettings, DictationStatus } from "./app/dictation/types";
+import type {
+  DictationOutputResult,
+  DictationSettings,
+  DictationStatus,
+} from "./app/dictation/types";
 import { DEFAULT_DICTATION_SETTINGS } from "./app/dictation/types";
 
 type ProviderKind = "stt" | "llm";
@@ -313,8 +317,8 @@ function DictationSection() {
     setIsTesting(true);
     setMessage(null);
     try {
-      const result = await invoke<{ pasted: boolean; message: string }>("test_dictation_paste");
-      setMessage(result.pasted ? "Paste test completed." : result.message);
+      const result = await invoke<DictationOutputResult>("test_dictation_paste");
+      setMessage(result.outcome === "pasted" ? "Paste test completed." : result.message);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {

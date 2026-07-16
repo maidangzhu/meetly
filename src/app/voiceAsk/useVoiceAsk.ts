@@ -4,7 +4,11 @@ import { useEffect, useReducer, useRef, useState } from "react";
 import { blobToBase64, debugLog, isTauriRuntime } from "../platform";
 import { startMicrophoneClip, type MicrophoneClipSession } from "../microphoneClip";
 import type { AssistantSuggestion } from "../types";
-import type { VoiceAskShortcutPressed, VoiceAskShortcutReleased } from "./types";
+import type {
+  VoiceAskContextCaptured,
+  VoiceAskShortcutPressed,
+  VoiceAskShortcutReleased,
+} from "./types";
 import {
   INITIAL_VOICE_ASK_STATE,
   selectVoiceAskViewState,
@@ -40,11 +44,23 @@ export function useVoiceAsk() {
         await listen<VoiceAskShortcutReleased>("voice_ask_released", (event) => {
           releaseRun(event.payload);
         }),
+        await listen<VoiceAskContextCaptured>("voice_ask_context_captured", (event) => {
+          dispatch({ type: "context", runId: event.payload.runId, context: event.payload.context });
+          debugLog(
+            `[voice-ask] context received run=${event.payload.runId} selected_chars=${event.payload.context?.selectedText.length ?? 0}`
+          );
+        }),
         await listen<string>("voice_ask_cancel_requested", (event) => {
           void cancelRun(event.payload);
         }),
         await listen<string>("voice_ask_superseded", (event) => {
           supersedeRun(event.payload);
+        }),
+        await listen("dictation_shortcut_pressed", () => {
+          if (!currentRunRef.current) {
+            dispatch({ type: "reset" });
+            debugLog("[voice-ask] conversation dismissed by dictation");
+          }
         }),
       ];
       if (disposed) {
@@ -76,14 +92,17 @@ export function useVoiceAsk() {
     }, CANCELLED_STATE_MS);
   };
 
-  const startRun = async ({ runId, startedAt }: VoiceAskShortcutPressed) => {
+  const startRun = async ({ runId, startedAt, context }: VoiceAskShortcutPressed) => {
     if (currentRunRef.current) return;
     if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
 
     currentRunRef.current = runId;
     pendingReleaseRef.current = false;
     cancelledRef.current = false;
-    dispatch({ type: "start", runId, startedAt });
+    dispatch({ type: "start", runId, startedAt, context });
+    debugLog(
+      `[voice-ask] conversation context run=${runId} selected_chars=${context?.selectedText.length ?? 0} source_app=${context?.sourceApp ?? "none"}`
+    );
 
     try {
       const clipSession = await startMicrophoneClip({ onLevel: setAudioLevel });
@@ -151,11 +170,21 @@ export function useVoiceAsk() {
 
       dispatch({ type: "question", runId, question });
       dispatch({ type: "phase", runId, phase: "thinking", message: "Thinking..." });
-      debugLog(`[voice-ask] transcribed run=${runId} chars=${question.length}`);
+      const conversationSnapshot = conversationRef.current;
+      debugLog(
+        `[voice-ask] transcribed run=${runId} chars=${question.length} history_turns=${conversationSnapshot.turns.length} selected_chars=${conversationSnapshot.context?.selectedText.length ?? 0}`
+      );
 
       const suggestion = await invoke<AssistantSuggestion>(
-        "complete_assistant_with_question",
-        { mode: "general", question }
+        "complete_voice_ask",
+        {
+          question,
+          selectedText: conversationSnapshot.context?.selectedText ?? null,
+          turns: conversationSnapshot.turns.map((turn) => ({
+            question: turn.question,
+            suggestion: turn.suggestion,
+          })),
+        }
       );
       assertCurrent(runId);
       await finishRun(runId);

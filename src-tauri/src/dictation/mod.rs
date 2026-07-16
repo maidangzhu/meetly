@@ -1,5 +1,6 @@
 mod output;
 mod polish;
+mod selected_text;
 mod settings;
 mod shortcut;
 mod target;
@@ -128,6 +129,29 @@ struct ShortcutPressedPayload {
 struct ShortcutReleasedPayload {
     run_id: String,
     released_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VoiceAskContextPayload {
+    selected_text: String,
+    source_app: Option<String>,
+    captured_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VoiceAskPressedPayload {
+    run_id: String,
+    started_at: u64,
+    context: Option<VoiceAskContextPayload>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VoiceAskContextCapturedPayload {
+    run_id: String,
+    context: Option<VoiceAskContextPayload>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -279,7 +303,11 @@ fn begin_voice_ask(app: &AppHandle) {
     let Ok(mut active) = state.active.lock() else {
         return;
     };
-    if active.is_some() {
+    if let Some(run) = active.as_ref() {
+        let _ = crate::debug_log::append(&format!(
+            "[voice-ask] press ignored active_run={} active_kind={:?}",
+            run.id, run.kind
+        ));
         return;
     }
 
@@ -292,12 +320,45 @@ fn begin_voice_ask(app: &AppHandle) {
     });
     drop(active);
 
-    crate::window::prepare_voice_ask_overlay(app);
-    register_escape(app);
     let _ = app.emit(
         "voice_ask_pressed",
-        ShortcutPressedPayload { run_id, started_at },
+        VoiceAskPressedPayload {
+            run_id: run_id.clone(),
+            started_at,
+            context: None,
+        },
     );
+    register_escape(app);
+
+    let app_for_context = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let context = capture_voice_ask_context();
+        let _ = crate::debug_log::append(&format!(
+            "[voice-ask] context captured run={} selected_chars={} source_app={}",
+            run_id,
+            context
+                .as_ref()
+                .map(|context| context.selected_text.chars().count())
+                .unwrap_or_default(),
+            context
+                .as_ref()
+                .and_then(|context| context.source_app.as_deref())
+                .unwrap_or("none")
+        ));
+        let _ = app_for_context.emit(
+            "voice_ask_context_captured",
+            VoiceAskContextCapturedPayload { run_id, context },
+        );
+    });
+}
+
+fn capture_voice_ask_context() -> Option<VoiceAskContextPayload> {
+    let (pid, source_app) = target::capture_app_identity()?;
+    selected_text::capture(pid).map(|selected_text| VoiceAskContextPayload {
+        selected_text,
+        source_app,
+        captured_at: now_ms(),
+    })
 }
 
 fn release_voice_ask(app: &AppHandle) {
@@ -440,19 +501,14 @@ pub async fn paste_dictation_text(
         || state.is_active(&run_id, ActiveRunKind::Dictation),
     )
     .await;
-    if should_finish_dictation_output(auto_paste, &result)
-        && state.finish(&run_id, ActiveRunKind::Dictation)
-    {
+    if should_finish_dictation_output(&result) && state.finish(&run_id, ActiveRunKind::Dictation) {
         unregister_escape(&app);
     }
-    result
+    Ok(result)
 }
 
-fn should_finish_dictation_output(
-    auto_paste: bool,
-    result: &Result<output::DictationOutputResult, String>,
-) -> bool {
-    matches!(result, Ok(output) if output.pasted || !auto_paste)
+fn should_finish_dictation_output(result: &output::DictationOutputResult) -> bool {
+    !result.retryable
 }
 
 #[tauri::command]
@@ -510,7 +566,7 @@ pub fn cancel_voice_ask_run(
 #[tauri::command]
 pub async fn test_dictation_paste(app: AppHandle) -> Result<output::DictationOutputResult, String> {
     let target = target::capture();
-    output::deliver(
+    Ok(output::deliver(
         &app,
         target.as_ref(),
         "Meetly voice dictation paste test",
@@ -518,7 +574,7 @@ pub async fn test_dictation_paste(app: AppHandle) -> Result<output::DictationOut
         true,
         || true,
     )
-    .await
+    .await)
 }
 
 fn now_ms() -> u64 {
@@ -557,22 +613,31 @@ mod tests {
     }
 
     #[test]
-    fn paste_failure_keeps_run_available_for_retry() {
-        let copied = Ok(output::DictationOutputResult {
-            pasted: false,
-            copied: true,
+    fn terminal_output_finishes_run_but_retryable_delivery_keeps_it_active() {
+        let copied = output::DictationOutputResult {
+            outcome: output::DictationDeliveryOutcome::Copied,
+            retryable: false,
             message: "copied".to_string(),
-        });
-        let pasted = Ok(output::DictationOutputResult {
-            pasted: true,
-            copied: true,
+        };
+        let retryable_copy = output::DictationOutputResult {
+            outcome: output::DictationDeliveryOutcome::Copied,
+            retryable: true,
+            message: "retry paste".to_string(),
+        };
+        let pasted = output::DictationOutputResult {
+            outcome: output::DictationDeliveryOutcome::Pasted,
+            retryable: false,
             message: "pasted".to_string(),
-        });
-        let failed = Err("paste failed".to_string());
+        };
+        let failed = output::DictationOutputResult {
+            outcome: output::DictationDeliveryOutcome::Failed,
+            retryable: true,
+            message: "clipboard failed".to_string(),
+        };
 
-        assert!(!should_finish_dictation_output(true, &copied));
-        assert!(!should_finish_dictation_output(true, &failed));
-        assert!(should_finish_dictation_output(true, &pasted));
-        assert!(should_finish_dictation_output(false, &copied));
+        assert!(should_finish_dictation_output(&copied));
+        assert!(!should_finish_dictation_output(&retryable_copy));
+        assert!(!should_finish_dictation_output(&failed));
+        assert!(should_finish_dictation_output(&pasted));
     }
 }

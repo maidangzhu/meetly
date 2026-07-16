@@ -1,5 +1,10 @@
 # Design: add-provider-settings
 
+> Historical single STT + single LLM configuration design. The next provider
+> layer preserves this storage contract while adding adapter IDs, capabilities,
+> registries, and an incremental profile migration. See
+> `docs/PROVIDER_ARCHITECTURE.md`.
+
 ## Context
 
 `docs/TECHNICAL_DESIGN.md` originally proposed `tauri-plugin-stronghold` for

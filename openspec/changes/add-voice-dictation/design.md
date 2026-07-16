@@ -1,5 +1,9 @@
 # Design: add-voice-dictation
 
+> Historical MVP design. The target runtime superseding the mixed-ownership
+> boundary is documented in
+> `openspec/changes/stabilize-voice-dictation-runtime/design.md`.
+
 ## 1. Architecture Decision
 
 主参考采用 Handy 的协调器模式，而不是把完整流程写进一个 React hook：

@@ -1,5 +1,10 @@
 # Proposal: add-voice-dictation
 
+> Historical MVP baseline. The implemented mixed React/Rust runtime is being
+> followed by `stabilize-voice-dictation-runtime`, which defines a Rust-owned
+> coordinator and first-class ASR/LLM provider contracts. Keep this proposal as
+> the record of the first vertical slice.
+
 ## Why
 
 Meetly 当前的核心能力围绕会议会话展开：Rust 捕获系统音频，Ask 单独录制一次麦克风片段，Coach 根据会议上下文提供建议。

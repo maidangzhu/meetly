@@ -35,8 +35,15 @@ export type VoiceAskConversationError = {
   question: string | null;
 };
 
+export type VoiceAskContext = {
+  selectedText: string;
+  sourceApp: string | null;
+  capturedAt: number;
+};
+
 export type VoiceAskConversationState = {
   conversationId: string | null;
+  context: VoiceAskContext | null;
   turns: VoiceAskTurn[];
   activeTurn: VoiceAskActiveTurn | null;
   error: VoiceAskConversationError | null;
@@ -56,9 +63,15 @@ export type VoiceAskViewState = {
 export type VoiceAskShortcutPressed = {
   runId: string;
   startedAt: number;
+  context: VoiceAskContext | null;
 };
 
 export type VoiceAskShortcutReleased = {
   runId: string;
   releasedAt: number;
+};
+
+export type VoiceAskContextCaptured = {
+  runId: string;
+  context: VoiceAskContext | null;
 };

@@ -2,6 +2,11 @@
 
 Date: 2026-07-12
 
+Update: 2026-07-16. The initial research below explains the MVP boundary that
+was implemented. The durable runtime direction, including the OpenLess source
+comparison and ASR/LLM provider contracts, is documented in
+[`VOICE_DICTATION_RUNTIME_DESIGN.md`](./VOICE_DICTATION_RUNTIME_DESIGN.md).
+
 ## 1. Conclusion
 
 Meetly can add this capability without disrupting the existing meeting assistant, and it is a good next step toward a personal office assistant.
@@ -41,6 +46,7 @@ The repositories below were verified through the GitHub API on 2026-07-12 and sh
 | [FluidVoice](https://github.com/altic-dev/FluidVoice) | 7,452 | Swift | GPL-3.0 | `58ed8df4` | Strong macOS implementation of shortcut capture, focused-element tracking, AI cleanup, and reliable text insertion. Architectural reference only because of GPL. |
 | [VoiceInk](https://github.com/Beingpax/VoiceInk) | 5,499 | Swift | Custom / GitHub reports `NOASSERTION` | `cf0c3669` | Useful separation of shortcut monitor, transcription pipeline, enhancement service, delivery, clipboard manager, and cursor paste. Do not copy code without reviewing its license. |
 | [OpenWhispr](https://github.com/OpenWhispr/openwhispr) | 4,452 | Electron, TypeScript | MIT | `5cac496d` | Most complete failure/fallback reference: Fn/Globe listener, streaming or batch STT, optional cleanup, auto-paste, clipboard-only fallback, and conditional clipboard restoration. |
+| OpenLess (local source review) | local checkout | Tauri, Rust, React | inspect repository terms before reuse | `~/maidang/openless` | Strongest reference for a Rust-owned Dictation coordinator, canonical PCM recording, batch/streaming ASR provider boundaries, provider-aware polish, audio retry, and explicit insertion outcomes. |
 
 Local paths:
 
@@ -49,6 +55,7 @@ Local paths:
 ~/maidang/references/FluidVoice
 ~/maidang/references/VoiceInk
 ~/maidang/references/openwhispr
+~/maidang/openless
 ```
 
 ### 2.1 Handy
@@ -100,9 +107,41 @@ OpenWhispr is useful for production fallback behavior:
 
 Its core UX rule is worth adopting: successful STT is already a successful run. Cleanup and auto-paste improve the result, but failures in either stage must leave recoverable text in the clipboard and history.
 
+### 2.5 OpenLess
+
+OpenLess was reviewed from the local source checkout on 2026-07-16. Its most
+useful difference from Meetly is ownership: one Rust coordinator owns the full
+recording, ASR, polish, insertion, history, cancellation, and terminal-state
+transaction.
+
+High-value patterns:
+
+- `recorder.rs` normalizes microphone input to 16 kHz mono Int16 PCM, emits RMS
+  levels, and monitors callback liveness.
+- batch and realtime ASR implementations consume the same canonical PCM
+  stream; providers declare their own buffering and finalization behavior.
+- every session has an ID, startup stop edges are preserved, stale
+  continuations are rejected, and cancellation races in-flight transcription.
+- Whisper-compatible batch ASR supports vocabulary prompts, long-audio
+  chunking, CJK-aware joining, dynamic timeout, and supported verbose-segment
+  filtering.
+- failed transcription can retry from an archived WAV; successful runs can
+  delete the archive.
+- polish uses provider-aware thinking controls, a larger timeout budget,
+  bounded recent context, a raw-transcript data envelope, output cleaning, and
+  raw fallback.
+- macOS insertion does not depend on retaining an Accessibility focused-element
+  handle; simulated paste failure becomes a copied fallback.
+
+Meetly should adopt these boundaries without copying OpenLess's full provider
+catalog, local model management, Style Pack marketplace, translation modes, or
+streaming keyboard insertion in the first refactor.
+
 ## 3. Meetly's Current Starting Point
 
-Meetly already has about half of the required pipeline:
+At the time of the initial research, Meetly had about half of the required
+pipeline. The vertical slice has since been implemented; this table remains the
+historical MVP baseline rather than the target architecture:
 
 | Need | Current state | Reuse decision |
 | --- | --- | --- |
