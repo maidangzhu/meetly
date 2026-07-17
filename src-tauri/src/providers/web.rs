@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
@@ -61,6 +61,7 @@ pub struct WebFetchItem {
     pub title: String,
     pub url: String,
     pub snippet: Option<String>,
+    pub published_date: Option<String>,
 }
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -156,6 +157,8 @@ struct ExaResult {
     text: Option<String>,
     #[serde(default)]
     highlights: Vec<String>,
+    #[serde(rename = "publishedDate")]
+    published_date: Option<String>,
 }
 
 #[tauri::command]
@@ -172,6 +175,16 @@ pub async fn search_web_with_exa(
     query: &str,
     limit: u8,
     require_enabled: bool,
+) -> Result<WebFetchResult, String> {
+    search_web_with_exa_with_freshness(app, query, limit, require_enabled, None).await
+}
+
+pub async fn search_web_with_exa_with_freshness(
+    app: &AppHandle,
+    query: &str,
+    limit: u8,
+    require_enabled: bool,
+    freshness_days: Option<u16>,
 ) -> Result<WebFetchResult, String> {
     let config = get_config(app)?;
     if config.provider != WebSearchProvider::Exa {
@@ -196,19 +209,25 @@ pub async fn search_web_with_exa(
         .build()
         .map_err(|error| error.to_string())?;
 
+    let mut body = json!({
+        "query": trimmed,
+        "numResults": limit,
+        "type": "fast",
+        "contents": {
+            "highlights": true
+        }
+    });
+    if let Some(days) = freshness_days {
+        let start = chrono::Utc::now() - chrono::Duration::days(i64::from(days.clamp(1, 90)));
+        body["startPublishedDate"] = Value::String(start.to_rfc3339());
+    }
+
     let response = client
         .post(EXA_SEARCH_URL)
         .header("accept", "application/json")
         .header("content-type", "application/json")
         .header("x-api-key", api_key)
-        .json(&json!({
-            "query": trimmed,
-            "numResults": limit,
-            "type": "fast",
-            "contents": {
-                "highlights": true
-            }
-        }))
+        .json(&body)
         .send()
         .await
         .map_err(|error| error.to_string())?;
@@ -275,6 +294,7 @@ fn normalize_exa_result(result: ExaResult) -> Option<WebFetchItem> {
         title: truncate_chars(&title, 160),
         url,
         snippet,
+        published_date: result.published_date,
     })
 }
 
@@ -329,10 +349,19 @@ mod tests {
             summary: None,
             text: Some("fallback".to_string()),
             highlights: vec!["primary highlight".to_string()],
+            published_date: Some("2026-07-17T12:00:00.000Z".to_string()),
         })
         .unwrap();
 
         assert_eq!(item.snippet.as_deref(), Some("primary highlight"));
+        assert_eq!(
+            item.published_date.as_deref(),
+            Some("2026-07-17T12:00:00.000Z")
+        );
+        assert_eq!(
+            serde_json::to_value(&item).unwrap()["publishedDate"],
+            "2026-07-17T12:00:00.000Z"
+        );
         assert_eq!(clamp_limit(0), 1);
         assert_eq!(clamp_limit(8), 5);
     }
@@ -347,6 +376,7 @@ mod tests {
             summary: None,
             text: None,
             highlights: Vec::new(),
+            published_date: None,
         });
         assert!(item.is_none());
     }

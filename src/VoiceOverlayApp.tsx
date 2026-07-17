@@ -198,6 +198,11 @@ export function VoiceOverlayApp() {
     return null;
   }
 
+  const hideVoiceAsk = () => {
+    dispatchPresentation({ type: "hide" });
+    voiceAsk.close();
+  };
+
   return (
     <main className="flex h-screen w-screen items-start justify-center overflow-hidden bg-transparent">
       <div className="relative h-full w-full p-2.5">
@@ -210,7 +215,7 @@ export function VoiceOverlayApp() {
             cancel={voiceAsk.close}
             expand={() => dispatchPresentation({ type: "expand" })}
             collapse={() => dispatchPresentation({ type: "collapse" })}
-            hide={() => dispatchPresentation({ type: "hide" })}
+            hide={hideVoiceAsk}
             newConversation={voiceAsk.newConversation}
           />
         ) : (

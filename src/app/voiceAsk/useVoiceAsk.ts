@@ -9,6 +9,7 @@ import type {
   VoiceAskShortcutPressed,
   VoiceAskShortcutReleased,
 } from "./types";
+import { isMeaningfulVoiceQuestion } from "./question";
 import {
   INITIAL_VOICE_ASK_STATE,
   selectVoiceAskViewState,
@@ -167,6 +168,11 @@ export function useVoiceAsk() {
       ).trim();
       assertCurrent(runId);
       if (!question) throw new Error("没有识别到可用问题。");
+      if (!isMeaningfulVoiceQuestion(question)) {
+        debugLog(`[voice-ask] transcript ignored run=${runId} reason=filler text=${JSON.stringify(question)}`);
+        await cancelRun(runId);
+        return;
+      }
 
       dispatch({ type: "question", runId, question });
       dispatch({ type: "phase", runId, phase: "thinking", message: "Thinking..." });
@@ -178,6 +184,7 @@ export function useVoiceAsk() {
       const suggestion = await invoke<AssistantSuggestion>(
         "complete_voice_ask",
         {
+          runId,
           question,
           selectedText: conversationSnapshot.context?.selectedText ?? null,
           turns: conversationSnapshot.turns.map((turn) => ({
@@ -242,6 +249,7 @@ export function useVoiceAsk() {
       return;
     }
     dispatch({ type: "reset" });
+    debugLog("[voice-ask] conversation closed");
   };
 
   const newConversation = () => {

@@ -88,8 +88,9 @@ Fn Voice Ask SHALL use an Agent runtime that is independent from Meeting Coach.
 #### Scenario: Enabled Fn run needs current public information
 
 - **WHEN** Web Search is enabled
-- **AND** the Fn Agent determines that current public information is needed
-- **THEN** it MAY call its own `web_search` registration
+- **AND** the latest Fn request explicitly asks to search or asks for current, recent, or news information
+- **THEN** the Fn Agent SHALL call its own `web_search` registration before answering
+- **AND** a current-information query SHALL use a bounded publication freshness window
 - **AND** the tool result SHALL return to the same Fn run
 - **AND** the answer SHALL include relevant source URLs
 
@@ -154,8 +155,15 @@ content as untrusted reference material.
 - **WHEN** an Agent invokes `web_search`
 - **THEN** the query SHALL contain between 2 and 300 characters
 - **AND** the requested result limit SHALL be between 1 and 5
-- **AND** the adapter SHALL return only bounded title, HTTP(S) URL, and snippet fields
+- **AND** the adapter SHALL return only bounded title, HTTP(S) URL, snippet, and publication-date fields
 - **AND** the Agent SHALL treat result text as data rather than instructions
+
+#### Scenario: Agent search is inspected in the local debug log
+
+- **WHEN** an Agent invokes `web_search`
+- **THEN** the log SHALL correlate the Agent run and tool call with a safe trace identifier
+- **AND** it SHALL record the validated public query and bounded tool result content
+- **AND** it SHALL NOT record credentials or rejected private query material
 
 #### Scenario: Candidate query contains private context
 

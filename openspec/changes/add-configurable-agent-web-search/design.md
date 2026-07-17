@@ -97,7 +97,7 @@ Fn press/release
        prompt = general desktop-assistant behavior
        tools = Fn tool registry
          search disabled -> no web_search
-         search enabled  -> optional web_search
+         search enabled  -> required for explicit/current requests
   -> current Fn run check
   -> voice overlay answer
 ```
@@ -106,6 +106,13 @@ This replaces the existing one-shot Fn LLM completion with a bounded Agent
 loop. The initial loop has at most three model steps and at most one successful
 search attempt. A second search request receives a tool error instructing the
 model to answer from the existing result.
+
+The first model step uses a required `web_search` tool choice when the latest
+spoken request explicitly asks to search or clearly asks for current/recent
+information. Current-information searches use a bounded publication-date
+window and expose normalized `publishedDate` values to the model. Tool calls,
+bounded results, and final response previews are correlated by the Fn run ID in
+the local debug log; credentials and rejected private queries are never logged.
 
 The tool schema accepts:
 

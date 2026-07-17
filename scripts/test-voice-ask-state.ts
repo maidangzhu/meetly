@@ -4,6 +4,7 @@ import {
   selectVoiceAskViewState,
   voiceAskReducer,
 } from "../src/app/voiceAsk/voiceAskReducer";
+import { isMeaningfulVoiceQuestion } from "../src/app/voiceAsk/question";
 
 const firstStarted = voiceAskReducer(INITIAL_VOICE_ASK_STATE, {
   type: "start",
@@ -127,5 +128,12 @@ const emptyCancelled = voiceAskReducer(firstStarted, {
 assert.equal(selectVoiceAskViewState(emptyCancelled).phase, "cancelled");
 
 assert.deepEqual(voiceAskReducer(firstAnswered, { type: "reset" }), INITIAL_VOICE_ASK_STATE);
+
+assert.equal(isMeaningfulVoiceQuestion("嗯。"), false);
+assert.equal(isMeaningfulVoiceQuestion("Yeah."), false);
+assert.equal(isMeaningfulVoiceQuestion("OK"), false);
+assert.equal(isMeaningfulVoiceQuestion("今天"), false);
+assert.equal(isMeaningfulVoiceQuestion("今天有什么新闻？"), true);
+assert.equal(isMeaningfulVoiceQuestion("Rust"), true);
 
 console.log("voice ask state tests passed");

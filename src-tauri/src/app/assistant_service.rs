@@ -108,6 +108,7 @@ pub async fn complete_assistant_with_question(
 #[tauri::command]
 pub async fn complete_voice_ask(
     app: AppHandle,
+    run_id: String,
     question: String,
     selected_text: Option<String>,
     turns: Vec<VoiceAskTurnInput>,
@@ -134,7 +135,7 @@ pub async fn complete_voice_ask(
         messages.len()
     ));
 
-    super::voice_agent::complete(&app, system_prompt, messages).await
+    super::voice_agent::complete(&app, run_id, system_prompt, messages).await
 }
 
 fn build_voice_ask_messages(

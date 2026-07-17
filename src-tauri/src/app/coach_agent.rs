@@ -9,6 +9,7 @@ pub async fn complete(
     super::agent_tool_loop::complete(
         app,
         workflow(),
+        None,
         system_prompt,
         vec![ChatMessage::user(user_message)],
     )
