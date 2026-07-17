@@ -45,8 +45,12 @@ export function useTauriEvents(
     let disposed = false;
     let unlisten: (() => void) | undefined;
 
+    const levels = { system: 0, microphone: 0 };
     void listen<AudioLevelChanged>("audio_level_changed", (event) => {
-      if (!disposed) ctx.setAudioLevel(event.payload.level);
+      if (disposed) return;
+      const source = event.payload.source ?? "system";
+      levels[source] = event.payload.level;
+      ctx.setAudioLevel(Math.max(levels.system, levels.microphone));
     }).then((nextUnlisten) => {
       if (disposed) nextUnlisten();
       else unlisten = nextUnlisten;

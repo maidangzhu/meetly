@@ -26,6 +26,9 @@ export function isLikelyDuplicateTranscript(candidate: TranscriptSegment, existi
   }
 
   return existing.slice(-8).some((segment) => {
+    if (segment.source && candidate.source && segment.source !== candidate.source) {
+      return false;
+    }
     const previous = normalizeTranscriptText(segment.text);
     if (!previous) {
       return false;

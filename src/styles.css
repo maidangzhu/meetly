@@ -253,6 +253,11 @@ textarea:focus-visible {
   color: rgb(255 255 255 / 0.82);
 }
 
+.voice-icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
 .voice-icon-button--danger:hover {
   background: rgb(181 83 91 / 0.16);
   color: #e2a2a7;

@@ -28,6 +28,8 @@ export class AgentRuntime {
   private pendingSttWake: WakeEvent | null = null;
   private pendingSttTimer: number | null = null;
   private recentEvidence: Array<{ text: string; handledAtMs: number }> = [];
+  private interactionEpoch = 0;
+  private manualAskActive = false;
 
   constructor(
     private context: ContextStore,
@@ -41,7 +43,27 @@ export class AgentRuntime {
     this.callbacks = callbacks;
   }
 
+  beginManualAsk() {
+    this.manualAskActive = true;
+    this.interactionEpoch += 1;
+    this.queue = [];
+    this.pendingSttWake = null;
+    if (this.pendingSttTimer !== null) {
+      window.clearTimeout(this.pendingSttTimer);
+      this.pendingSttTimer = null;
+    }
+  }
+
+  finishManualAsk() {
+    this.manualAskActive = false;
+  }
+
   wake(event: WakeEvent) {
+    if (this.manualAskActive) {
+      this.callbacks.onWakeSkipped?.(event, "manual_ask_active");
+      return;
+    }
+
     if (isTranscriptWake(event) && (this.inFlight || this.queue.length > 0)) {
       this.pendingSttWake = event;
       this.callbacks.onWakeSkipped?.(event, "stt_coalesced_while_in_flight");
@@ -66,27 +88,46 @@ export class AgentRuntime {
     try {
       while (this.queue.length > 0) {
         const wake = this.queue.shift()!;
+        const epoch = this.interactionEpoch;
         this.callbacks.onWakeStart?.(wake);
 
         try {
           const snapshot = this.context.snapshot(AGENT_CONTEXT_WINDOW_MS);
           const prompt = buildAgentPrompt(wake, snapshot);
           const suggestion = await this.transport.complete(prompt, {
-            onDelta: (delta) => this.callbacks.onDelta?.(delta, wake),
-            onRetry: (attempt, reason) => this.callbacks.onRetry?.(attempt, reason, wake),
-            onToolEnd: (name, isError) => this.callbacks.onToolEnd?.(name, isError, wake),
-            onToolStart: (name) => this.callbacks.onToolStart?.(name, wake),
-            onToolTrace: (trace) => this.callbacks.onToolTrace?.(trace, wake),
+            onDelta: (delta) => {
+              if (epoch === this.interactionEpoch) this.callbacks.onDelta?.(delta, wake);
+            },
+            onRetry: (attempt, reason) => {
+              if (epoch === this.interactionEpoch) this.callbacks.onRetry?.(attempt, reason, wake);
+            },
+            onToolEnd: (name, isError) => {
+              if (epoch === this.interactionEpoch) this.callbacks.onToolEnd?.(name, isError, wake);
+            },
+            onToolStart: (name) => {
+              if (epoch === this.interactionEpoch) this.callbacks.onToolStart?.(name, wake);
+            },
+            onToolTrace: (trace) => {
+              if (epoch === this.interactionEpoch) this.callbacks.onToolTrace?.(trace, wake);
+            },
           });
+          if (epoch !== this.interactionEpoch) {
+            this.callbacks.onWakeSkipped?.(wake, "superseded_by_manual_ask");
+            continue;
+          }
           this.markHandled(wake);
           this.callbacks.onMessage(suggestion, wake);
         } catch (error) {
+          if (epoch !== this.interactionEpoch) {
+            this.callbacks.onWakeSkipped?.(wake, "superseded_by_manual_ask");
+            continue;
+          }
           this.callbacks.onError(error instanceof Error ? error.message : String(error), wake);
         }
       }
     } finally {
       this.inFlight = false;
-      this.schedulePendingSttWake();
+      if (!this.manualAskActive) this.schedulePendingSttWake();
     }
   }
 

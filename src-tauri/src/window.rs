@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::{sync::Mutex, time::Duration};
 use tauri::{
     App, AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Position, State, WebviewUrl,
@@ -11,11 +12,53 @@ const OUTER_GUTTER: f64 = 10.0;
 const TOP_OFFSET: i32 = 54;
 const COMPACT_OVERLAY_WIDTH: f64 = 320.0;
 const COMPACT_OVERLAY_HEIGHT: f64 = 68.0;
+const EXPANDED_OVERLAY_WIDTH: f64 = 720.0;
+const EXPANDED_OVERLAY_HEIGHT: f64 = 680.0;
+const EXPANDED_OVERLAY_MIN_WIDTH: f64 = 560.0;
+const EXPANDED_OVERLAY_MIN_HEIGHT: f64 = 480.0;
+const EXPANDED_OVERLAY_MARGIN: f64 = 24.0;
 const DICTATION_BOTTOM_OFFSET: f64 = 56.0;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceOverlayPresentationMode {
+    Hidden,
+    #[default]
+    Compact,
+    Expanded,
+}
+
+#[derive(Debug)]
+struct VoiceOverlayPlacement {
+    cursor_monitor: Option<CursorMonitorGeometry>,
+    presentation: VoiceOverlayPresentationMode,
+    last_non_hidden: VoiceOverlayPresentationMode,
+    manually_positioned: bool,
+}
+
+impl Default for VoiceOverlayPlacement {
+    fn default() -> Self {
+        Self {
+            cursor_monitor: None,
+            presentation: VoiceOverlayPresentationMode::Hidden,
+            last_non_hidden: VoiceOverlayPresentationMode::Compact,
+            manually_positioned: false,
+        }
+    }
+}
+
+impl VoiceOverlayPlacement {
+    fn set_presentation(&mut self, presentation: VoiceOverlayPresentationMode) {
+        self.presentation = presentation;
+        if presentation != VoiceOverlayPresentationMode::Hidden {
+            self.last_non_hidden = presentation;
+        }
+    }
+}
 
 #[derive(Default)]
 pub struct VoiceOverlayState {
-    cursor_monitor: Mutex<Option<CursorMonitorGeometry>>,
+    placement: Mutex<VoiceOverlayPlacement>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -27,7 +70,20 @@ struct CursorMonitorGeometry {
     monitor_y: i32,
     monitor_width: i32,
     monitor_height: i32,
+    work_x: i32,
+    work_y: i32,
+    work_width: i32,
+    work_height: i32,
     scale: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct VoiceOverlayDimensions {
+    width: f64,
+    height: f64,
+    min_width: Option<f64>,
+    min_height: Option<f64>,
+    margin: f64,
 }
 
 #[tauri::command]
@@ -46,14 +102,16 @@ pub fn set_island_height(window: WebviewWindow, height: u32) -> Result<(), Strin
 }
 
 #[tauri::command]
-pub fn set_voice_overlay_mode(
+pub fn set_voice_overlay_presentation_mode(
     app: AppHandle,
     state: State<VoiceOverlayState>,
-    visible: bool,
+    presentation_mode: VoiceOverlayPresentationMode,
     width: Option<f64>,
     height: Option<f64>,
 ) -> Result<(), String> {
-    if !visible && crate::dictation::has_active_run(&app) {
+    if presentation_mode == VoiceOverlayPresentationMode::Hidden
+        && crate::dictation::has_active_run(&app)
+    {
         let _ = crate::debug_log::append("[voice-overlay] ignored hide while voice run is active");
         return Ok(());
     }
@@ -61,28 +119,71 @@ pub fn set_voice_overlay_mode(
         return Err("Voice overlay window not found".to_string());
     };
 
-    let mut cursor_monitor = state
-        .cursor_monitor
+    let mut placement = state
+        .placement
         .lock()
         .map_err(|error| format!("Failed to lock voice overlay state: {error}"))?;
 
-    if visible {
-        if cursor_monitor.is_none() {
-            *cursor_monitor = cursor_monitor_geometry(&window)?;
+    if presentation_mode != VoiceOverlayPresentationMode::Hidden {
+        if placement.cursor_monitor.is_none() {
+            placement.cursor_monitor = cursor_monitor_geometry(&window)?;
         }
-        position_overlay(
-            &window,
-            *cursor_monitor,
-            width.unwrap_or(COMPACT_OVERLAY_WIDTH),
-            height.unwrap_or(COMPACT_OVERLAY_HEIGHT),
-        )?;
+        let dimensions = resolve_voice_overlay_dimensions(
+            presentation_mode,
+            width,
+            height,
+            placement.cursor_monitor,
+        );
+        configure_voice_overlay_window(&app, &window, presentation_mode, dimensions)?;
+        if placement.manually_positioned {
+            resize_preserving_position_with_margin(
+                &window,
+                tauri::LogicalSize::new(dimensions.width, dimensions.height),
+                dimensions.margin,
+            )
+            .map_err(|error| error.to_string())?;
+        } else {
+            position_overlay(
+                &window,
+                placement.cursor_monitor,
+                dimensions.width,
+                dimensions.height,
+                dimensions.margin,
+            )?;
+        }
+        placement.set_presentation(presentation_mode);
         window.show().map_err(|error| error.to_string())?;
+        activate_voice_overlay_window(&app, &window, presentation_mode)?;
         return Ok(());
     }
 
-    *cursor_monitor = None;
+    placement.set_presentation(VoiceOverlayPresentationMode::Hidden);
+    deactivate_voice_overlay_window(&app);
     window.hide().map_err(|error| error.to_string())?;
     let _ = crate::debug_log::append("[voice-overlay] hidden");
+    Ok(())
+}
+
+#[tauri::command]
+pub fn mark_voice_overlay_manually_positioned(
+    app: AppHandle,
+    state: State<VoiceOverlayState>,
+) -> Result<(), String> {
+    let Some(window) = app.get_webview_window("voice-overlay") else {
+        return Err("Voice overlay window not found".to_string());
+    };
+    let destination_monitor = cursor_monitor_geometry(&window)?;
+    let position = window.outer_position().map_err(|error| error.to_string())?;
+    let mut placement = state
+        .placement
+        .lock()
+        .map_err(|error| format!("Failed to lock voice overlay state: {error}"))?;
+    placement.cursor_monitor = destination_monitor;
+    placement.manually_positioned = true;
+    let _ = crate::debug_log::append(&format!(
+        "[voice-overlay] manually positioned x={} y={}",
+        position.x, position.y
+    ));
     Ok(())
 }
 
@@ -109,17 +210,38 @@ fn prepare_compact_overlay_on_main(app: &AppHandle, kind: &str) {
     };
     let state = app.state::<VoiceOverlayState>();
     let result = (|| {
-        let mut cursor_monitor = state
-            .cursor_monitor
+        let mut placement = state
+            .placement
             .lock()
             .map_err(|error| format!("Failed to lock voice overlay state: {error}"))?;
-        *cursor_monitor = cursor_monitor_geometry(&window)?;
-        position_overlay(
+        configure_voice_overlay_window(
+            app,
             &window,
-            *cursor_monitor,
-            COMPACT_OVERLAY_WIDTH,
-            COMPACT_OVERLAY_HEIGHT,
+            VoiceOverlayPresentationMode::Compact,
+            resolve_voice_overlay_dimensions(
+                VoiceOverlayPresentationMode::Compact,
+                None,
+                None,
+                placement.cursor_monitor,
+            ),
         )?;
+        if placement.manually_positioned {
+            resize_preserving_position(
+                &window,
+                tauri::LogicalSize::new(COMPACT_OVERLAY_WIDTH, COMPACT_OVERLAY_HEIGHT),
+            )
+            .map_err(|error| error.to_string())?;
+        } else {
+            placement.cursor_monitor = cursor_monitor_geometry(&window)?;
+            position_overlay(
+                &window,
+                placement.cursor_monitor,
+                COMPACT_OVERLAY_WIDTH,
+                COMPACT_OVERLAY_HEIGHT,
+                0.0,
+            )?;
+        }
+        placement.set_presentation(VoiceOverlayPresentationMode::Compact);
         window.show().map_err(|error| error.to_string())
     })();
 
@@ -291,11 +413,133 @@ fn position_top_center_at_cursor(window: &WebviewWindow) -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 
+fn resolve_voice_overlay_dimensions(
+    presentation: VoiceOverlayPresentationMode,
+    requested_width: Option<f64>,
+    requested_height: Option<f64>,
+    geometry: Option<CursorMonitorGeometry>,
+) -> VoiceOverlayDimensions {
+    if presentation != VoiceOverlayPresentationMode::Expanded {
+        return VoiceOverlayDimensions {
+            width: requested_width.unwrap_or(COMPACT_OVERLAY_WIDTH),
+            height: requested_height.unwrap_or(COMPACT_OVERLAY_HEIGHT),
+            min_width: None,
+            min_height: None,
+            margin: 0.0,
+        };
+    }
+
+    let (max_width, max_height) = geometry
+        .map(|geometry| {
+            let logical_work_width = geometry.work_width as f64 / geometry.scale;
+            let logical_work_height = geometry.work_height as f64 / geometry.scale;
+            (
+                (logical_work_width - EXPANDED_OVERLAY_MARGIN * 2.0).max(1.0),
+                (logical_work_height - EXPANDED_OVERLAY_MARGIN * 2.0).max(1.0),
+            )
+        })
+        .unwrap_or((EXPANDED_OVERLAY_WIDTH, EXPANDED_OVERLAY_HEIGHT));
+    let min_width = EXPANDED_OVERLAY_MIN_WIDTH.min(max_width);
+    let min_height = EXPANDED_OVERLAY_MIN_HEIGHT.min(max_height);
+    let width = requested_width
+        .unwrap_or(EXPANDED_OVERLAY_WIDTH)
+        .max(min_width)
+        .min(max_width);
+    let height = requested_height
+        .unwrap_or(EXPANDED_OVERLAY_HEIGHT)
+        .max(min_height)
+        .min(max_height);
+
+    VoiceOverlayDimensions {
+        width,
+        height,
+        min_width: Some(min_width),
+        min_height: Some(min_height),
+        margin: EXPANDED_OVERLAY_MARGIN,
+    }
+}
+
+fn configure_voice_overlay_window(
+    app: &AppHandle,
+    window: &WebviewWindow,
+    presentation: VoiceOverlayPresentationMode,
+    dimensions: VoiceOverlayDimensions,
+) -> Result<(), String> {
+    if presentation == VoiceOverlayPresentationMode::Expanded {
+        window
+            .set_min_size(Some(tauri::LogicalSize::new(
+                dimensions.min_width.unwrap_or(EXPANDED_OVERLAY_MIN_WIDTH),
+                dimensions.min_height.unwrap_or(EXPANDED_OVERLAY_MIN_HEIGHT),
+            )))
+            .map_err(|error| error.to_string())?;
+        window
+            .set_resizable(true)
+            .map_err(|error| error.to_string())?;
+        // tauri-nspanel replaces Tao's NSWindow class. Tao's macOS
+        // set_focusable implementation then panics while looking up its ivar.
+        #[cfg(not(target_os = "macos"))]
+        window
+            .set_focusable(true)
+            .map_err(|error| error.to_string())?;
+        return Ok(());
+    }
+
+    deactivate_voice_overlay_window(app);
+    window
+        .set_min_size(None::<tauri::Size>)
+        .map_err(|error| error.to_string())?;
+    window
+        .set_resizable(false)
+        .map_err(|error| error.to_string())?;
+    #[cfg(not(target_os = "macos"))]
+    window
+        .set_focusable(false)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+fn activate_voice_overlay_window(
+    app: &AppHandle,
+    window: &WebviewWindow,
+    presentation: VoiceOverlayPresentationMode,
+) -> Result<(), String> {
+    if presentation != VoiceOverlayPresentationMode::Expanded {
+        return Ok(());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        use tauri_nspanel::ManagerExt;
+        if let Ok(panel) = app.get_webview_panel("voice-overlay") {
+            panel.set_becomes_key_only_if_needed(false);
+            panel.make_key_and_order_front(None);
+            return Ok(());
+        }
+    }
+
+    window.set_focus().map_err(|error| error.to_string())
+}
+
+fn deactivate_voice_overlay_window(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        use tauri_nspanel::ManagerExt;
+        if let Ok(panel) = app.get_webview_panel("voice-overlay") {
+            panel.resign_key_window();
+            panel.set_becomes_key_only_if_needed(true);
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    let _ = app;
+}
+
 fn position_overlay(
     window: &WebviewWindow,
     geometry: Option<CursorMonitorGeometry>,
     logical_width: f64,
     logical_height: f64,
+    logical_margin: f64,
 ) -> Result<(), String> {
     let Some(geometry) = geometry else {
         let _ = crate::debug_log::append("[overlay] no monitor geometry available");
@@ -310,14 +554,19 @@ fn position_overlay(
             window_height.max(1) as u32,
         ))
         .map_err(|error| error.to_string())?;
+    let margin = (logical_margin * geometry.scale).round() as i32;
     let (x, y) = bottom_center_coordinates(
-        geometry.monitor_x,
-        geometry.monitor_y,
-        geometry.monitor_width,
-        geometry.monitor_height,
+        geometry.work_x + margin,
+        geometry.work_y + margin,
+        (geometry.work_width - margin * 2).max(window_width),
+        (geometry.work_height - margin * 2).max(window_height),
         window_width,
         window_height,
-        (DICTATION_BOTTOM_OFFSET * geometry.scale).round() as i32,
+        if logical_margin > 0.0 {
+            0
+        } else {
+            (DICTATION_BOTTOM_OFFSET * geometry.scale).round() as i32
+        },
     );
     window
         .set_position(Position::Physical(PhysicalPosition::new(x, y)))
@@ -357,6 +606,7 @@ fn cursor_monitor_geometry(
         }) {
             let position = monitor.position();
             let size = monitor.size();
+            let work_area = monitor.work_area();
             return Ok(Some(CursorMonitorGeometry {
                 source: "appkit",
                 cursor_x,
@@ -365,6 +615,10 @@ fn cursor_monitor_geometry(
                 monitor_y: position.y,
                 monitor_width: size.width as i32,
                 monitor_height: size.height as i32,
+                work_x: work_area.position.x,
+                work_y: work_area.position.y,
+                work_width: work_area.size.width as i32,
+                work_height: work_area.size.height as i32,
                 scale: monitor.scale_factor(),
             }));
         }
@@ -395,6 +649,7 @@ fn cursor_monitor_geometry(
     }) {
         let position = monitor.position();
         let size = monitor.size();
+        let work_area = monitor.work_area();
         return Ok(Some(CursorMonitorGeometry {
             source: "tauri",
             cursor_x: cursor.x,
@@ -403,6 +658,10 @@ fn cursor_monitor_geometry(
             monitor_y: position.y,
             monitor_width: size.width as i32,
             monitor_height: size.height as i32,
+            work_x: work_area.position.x,
+            work_y: work_area.position.y,
+            work_width: work_area.size.width as i32,
+            work_height: work_area.size.height as i32,
             scale: monitor.scale_factor(),
         }));
     }
@@ -416,6 +675,7 @@ fn cursor_monitor_geometry(
     Ok(fallback.map(|monitor| {
         let position = monitor.position();
         let size = monitor.size();
+        let work_area = monitor.work_area();
         CursorMonitorGeometry {
             source: "tauri-fallback",
             cursor_x: cursor.x,
@@ -424,6 +684,10 @@ fn cursor_monitor_geometry(
             monitor_y: position.y,
             monitor_width: size.width as i32,
             monitor_height: size.height as i32,
+            work_x: work_area.position.x,
+            work_y: work_area.position.y,
+            work_width: work_area.size.width as i32,
+            work_height: work_area.size.height as i32,
             scale: monitor.scale_factor(),
         }
     }))
@@ -487,33 +751,76 @@ fn resize_preserving_position(
     window: &WebviewWindow,
     size: tauri::LogicalSize<f64>,
 ) -> tauri::Result<()> {
+    resize_preserving_position_with_margin(window, size, 0.0)
+}
+
+fn resize_preserving_position_with_margin(
+    window: &WebviewWindow,
+    size: tauri::LogicalSize<f64>,
+    logical_margin: f64,
+) -> tauri::Result<()> {
     let scale = window.scale_factor()?;
     let old_position = window.outer_position()?;
     let old_size = window.outer_size()?;
     let new_width = (size.width * scale).round() as i32;
     let new_height = (size.height * scale).round() as i32;
-    let old_center_x = old_position.x + old_size.width as i32 / 2;
-    let desired_x = old_center_x - new_width / 2;
-    let desired_y = old_position.y;
+    let monitor = window.current_monitor()?.or(window.primary_monitor()?);
 
     window.set_size(size)?;
 
-    if let Some(monitor) = window.current_monitor()?.or(window.primary_monitor()?) {
-        let monitor_position = monitor.position();
-        let monitor_size = monitor.size();
-        let monitor_left = monitor_position.x;
-        let monitor_top = monitor_position.y;
-        let monitor_right = monitor_left + monitor_size.width as i32;
-        let monitor_bottom = monitor_top + monitor_size.height as i32;
-        let max_x = monitor_right - new_width;
-        let max_y = monitor_bottom - new_height;
-        let x = clamp_i32(desired_x, monitor_left, max_x.max(monitor_left));
-        let y = clamp_i32(desired_y, monitor_top, max_y.max(monitor_top));
+    if let Some(monitor) = monitor {
+        let margin = (logical_margin * scale).round() as i32;
+        let (monitor_origin, monitor_size) = if margin > 0 {
+            let work_area = monitor.work_area();
+            (
+                (work_area.position.x + margin, work_area.position.y + margin),
+                (
+                    (work_area.size.width as i32 - margin * 2).max(new_width),
+                    (work_area.size.height as i32 - margin * 2).max(new_height),
+                ),
+            )
+        } else {
+            let position = monitor.position();
+            let size = monitor.size();
+            (
+                (position.x, position.y),
+                (size.width as i32, size.height as i32),
+            )
+        };
+        let (x, y) = anchored_resize_coordinates(
+            monitor_origin,
+            monitor_size,
+            (old_position.x, old_position.y),
+            (old_size.width as i32, old_size.height as i32),
+            (new_width, new_height),
+        );
 
         window.set_position(Position::Physical(PhysicalPosition::new(x, y)))?;
     }
 
     Ok(())
+}
+
+fn anchored_resize_coordinates(
+    monitor_origin: (i32, i32),
+    monitor_size: (i32, i32),
+    old_position: (i32, i32),
+    old_size: (i32, i32),
+    new_size: (i32, i32),
+) -> (i32, i32) {
+    let (monitor_left, monitor_top) = monitor_origin;
+    let (monitor_width, monitor_height) = monitor_size;
+    let (old_x, old_y) = old_position;
+    let (old_width, _) = old_size;
+    let (new_width, new_height) = new_size;
+    let desired_x = old_x + old_width / 2 - new_width / 2;
+    let max_x = monitor_left + monitor_width - new_width;
+    let max_y = monitor_top + monitor_height - new_height;
+
+    (
+        clamp_i32(desired_x, monitor_left, max_x.max(monitor_left)),
+        clamp_i32(old_y, monitor_top, max_y.max(monitor_top)),
+    )
 }
 
 fn clamp_i32(value: i32, min: i32, max: i32) -> i32 {
@@ -593,6 +900,7 @@ fn setup_macos_panel(window: &WebviewWindow) {
     #[allow(non_upper_case_globals)]
     const NSWindowStyleMaskNonActivatingPanel: i32 = 1 << 7;
     panel.set_style_mask(NSWindowStyleMaskNonActivatingPanel);
+    panel.set_becomes_key_only_if_needed(true);
 
     panel.set_collection_behaviour(
         NSWindowCollectionBehavior::NSWindowCollectionBehaviorCanJoinAllSpaces
@@ -610,8 +918,9 @@ fn setup_macos_panel(window: &WebviewWindow) {
 #[cfg(test)]
 mod tests {
     use super::{
-        bottom_center_coordinates, monitor_contains_cursor, COMPACT_OVERLAY_HEIGHT,
-        COMPACT_OVERLAY_WIDTH,
+        anchored_resize_coordinates, bottom_center_coordinates, monitor_contains_cursor,
+        resolve_voice_overlay_dimensions, CursorMonitorGeometry, VoiceOverlayPlacement,
+        VoiceOverlayPresentationMode, COMPACT_OVERLAY_HEIGHT, COMPACT_OVERLAY_WIDTH,
     };
 
     #[test]
@@ -655,5 +964,112 @@ mod tests {
             -1920, -120, 1920, 1080, 300.0, 400.0
         ));
         assert!(monitor_contains_cursor(0, 0, 1512, 982, 300.0, 400.0));
+    }
+
+    #[test]
+    fn manual_resize_preserves_top_and_horizontal_center() {
+        assert_eq!(
+            anchored_resize_coordinates((0, 0), (1512, 982), (700, 420), (480, 300), (480, 356),),
+            (700, 420)
+        );
+        assert_eq!(
+            anchored_resize_coordinates((0, 0), (1512, 982), (700, 420), (480, 300), (720, 680),),
+            (580, 302)
+        );
+    }
+
+    #[test]
+    fn manual_resize_clamps_to_negative_origin_monitor() {
+        assert_eq!(
+            anchored_resize_coordinates(
+                (-1920, -120),
+                (1920, 1080),
+                (-1900, -100),
+                (480, 300),
+                (720, 680),
+            ),
+            (-1920, -100)
+        );
+    }
+
+    #[test]
+    fn presentation_tracks_last_non_hidden_mode() {
+        let mut placement = VoiceOverlayPlacement::default();
+        assert_eq!(placement.presentation, VoiceOverlayPresentationMode::Hidden);
+        assert_eq!(
+            placement.last_non_hidden,
+            VoiceOverlayPresentationMode::Compact
+        );
+
+        placement.set_presentation(VoiceOverlayPresentationMode::Expanded);
+        placement.set_presentation(VoiceOverlayPresentationMode::Hidden);
+
+        assert_eq!(placement.presentation, VoiceOverlayPresentationMode::Hidden);
+        assert_eq!(
+            placement.last_non_hidden,
+            VoiceOverlayPresentationMode::Expanded
+        );
+        assert_eq!(
+            serde_json::to_value(VoiceOverlayPresentationMode::Expanded).unwrap(),
+            "expanded"
+        );
+    }
+
+    #[test]
+    fn expanded_dimensions_use_target_and_minimum_on_normal_monitor() {
+        let geometry = CursorMonitorGeometry {
+            source: "test",
+            cursor_x: 100.0,
+            cursor_y: 100.0,
+            monitor_x: 0,
+            monitor_y: 0,
+            monitor_width: 3024,
+            monitor_height: 1964,
+            work_x: 0,
+            work_y: 48,
+            work_width: 3024,
+            work_height: 1880,
+            scale: 2.0,
+        };
+        let dimensions = resolve_voice_overlay_dimensions(
+            VoiceOverlayPresentationMode::Expanded,
+            None,
+            None,
+            Some(geometry),
+        );
+
+        assert_eq!(dimensions.width, 720.0);
+        assert_eq!(dimensions.height, 680.0);
+        assert_eq!(dimensions.min_width, Some(560.0));
+        assert_eq!(dimensions.min_height, Some(480.0));
+    }
+
+    #[test]
+    fn expanded_dimensions_shrink_below_minimum_only_for_small_work_area() {
+        let geometry = CursorMonitorGeometry {
+            source: "test",
+            cursor_x: -800.0,
+            cursor_y: 100.0,
+            monitor_x: -1100,
+            monitor_y: 0,
+            monitor_width: 1100,
+            monitor_height: 900,
+            work_x: -1100,
+            work_y: 0,
+            work_width: 1100,
+            work_height: 900,
+            scale: 2.0,
+        };
+        let dimensions = resolve_voice_overlay_dimensions(
+            VoiceOverlayPresentationMode::Expanded,
+            None,
+            None,
+            Some(geometry),
+        );
+
+        assert_eq!(dimensions.width, 502.0);
+        assert_eq!(dimensions.height, 402.0);
+        assert_eq!(dimensions.min_width, Some(502.0));
+        assert_eq!(dimensions.min_height, Some(402.0));
     }
 }

@@ -65,7 +65,7 @@ Raw events record facts. They do not call the model directly.
 | `transcript.finalized` | A final transcript segment was accepted after dedupe. |
 | `speaker.turn.completed` | A coherent speaker turn can be evaluated. |
 | `silence.elapsed` | A meaningful silence threshold elapsed after a question or objection. |
-| `user.manual_ask` | The user explicitly requested an answer. |
+| `user.manual_ask` | The user explicitly requested an answer inside the active meeting through Ask/Enter. |
 | `session.ended` | The live session is no longer allowed to produce Coach output. |
 
 The journal SHOULD include source, speaker confidence, segment ids, timestamps,
@@ -107,10 +107,15 @@ signals. A welcome message is not a substitute for reacting to the meeting.
 
 ## 6. User Intent And Wake Races
 
-User intent always wins. This applies to manual Ask/Enter, stopping the session,
-changing the active session, and changing capture configuration. Opening a
-panel, dragging a window, or other presentation-only actions do not preempt the
-Coach.
+Meeting-session user intent always wins inside the Coach runtime. This applies
+to manual meeting Ask/Enter, stopping the session, changing the active meeting
+session, and changing meeting capture configuration. Opening a panel, dragging
+a window, or other presentation-only actions do not preempt the Coach.
+
+Fn Voice Ask is an independent general Agent workflow. It is outside the Coach
+wake policy: Fn does not preempt, suppress, suspend, resume, or otherwise alter
+Coach work, and Coach does not alter an Fn run. The two workflows may run
+concurrently and validate their own result publication independently.
 
 | Race | Required result |
 |---|---|

@@ -14,6 +14,7 @@ pub struct LlmRuntimeConfig {
     pub base_url: String,
     pub model: String,
     pub api_key: String,
+    pub web_search_enabled: bool,
 }
 
 #[tauri::command]
@@ -96,6 +97,9 @@ pub async fn get_llm_runtime_config_for_pi(app: AppHandle) -> Result<LlmRuntimeC
         base_url: credentials.base_url,
         model: credentials.model,
         api_key: credentials.api_key,
+        web_search_enabled: super::web::get_config(&app)
+            .map(|config| config.enabled)
+            .unwrap_or(false),
     })
 }
 

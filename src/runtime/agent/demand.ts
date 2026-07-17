@@ -31,7 +31,7 @@ const ENGLISH_QUESTION_KEYWORDS = [
 
 export function detectSttWake(
   segment: TranscriptSegment,
-  sessionKind: SessionKind = "interview"
+  sessionKind: SessionKind = "remote"
 ): WakeEvent | null {
   const text = segment.text.trim();
   if (!text) return null;
@@ -47,7 +47,7 @@ export function detectSttWake(
     return createSttQuestionWake(text);
   }
 
-  if (sessionKind === "meeting") {
+  if (sessionKind === "remote" || sessionKind === "in_person") {
     const negotiationSignal = detectMeetingSignal(text);
     if (negotiationSignal) {
       return createSttSignalWake(text, negotiationSignal);

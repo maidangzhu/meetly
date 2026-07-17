@@ -244,7 +244,13 @@ export function useVoiceAsk() {
     dispatch({ type: "reset" });
   };
 
-  return { state, conversation, audioLevel, close };
+  const newConversation = () => {
+    if (currentRunRef.current) return;
+    dispatch({ type: "reset" });
+    debugLog("[voice-ask] new conversation");
+  };
+
+  return { state, conversation, audioLevel, close, newConversation };
 }
 
 function errorMessage(error: unknown) {

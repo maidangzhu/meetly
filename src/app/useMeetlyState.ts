@@ -32,9 +32,9 @@ export function useMeetlyState() {
   const [partialTranscript, setPartialTranscript] = useState<PartialTranscript | null>(null);
   const [transcriptHistory, setTranscriptHistory] = useState<TranscriptSegment[]>([]);
   const [transcriptError, setTranscriptError] = useState<string | null>(null);
-  const [assistantMode, setAssistantMode] = useState<AssistantMode>("interview");
+  const [assistantMode, setAssistantMode] = useState<AssistantMode>("meeting");
   const [meetingPerspective, setMeetingPerspective] = useState<MeetingPerspective>("candidate");
-  const [sessionKind, setSessionKind] = useState<SessionKind>("interview");
+  const [sessionKind, setSessionKind] = useState<SessionKind>("remote");
   const [audioSource, setAudioSource] = useState<AudioSource>("system");
   const [meetingGoal, setMeetingGoal] = useState("");
   const [contextDocuments, setContextDocuments] = useState<ContextDocument[]>([]);

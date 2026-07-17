@@ -11,9 +11,12 @@
     "test:wake": "tsx scripts/replay-coach-wake-policy.ts",
     "test:coach-log": "tsx scripts/replay-latest-coach-log.ts",
     "test:coach-journal": "tsx scripts/test-coach-journal.ts",
+    "test:agent-runtime": "tsx scripts/test-agent-runtime-races.ts",
     "test:dictation": "tsx scripts/test-dictation-state.ts",
     "test:microphone-clip": "tsx scripts/test-microphone-clip.ts",
+    "test:session-audio": "tsx scripts/test-session-audio.ts",
     "test:voice-ask": "tsx scripts/test-voice-ask-state.ts",
+    "test:voice-overlay": "tsx scripts/test-voice-overlay-presentation.ts",
     "package:macos:test": "CI=true tauri build --bundles dmg --no-sign --config src-tauri/tauri.test.conf.json && bash scripts/verify-macos-test-bundle.sh",
     "tauri": "tauri"
   },

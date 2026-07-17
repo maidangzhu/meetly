@@ -68,8 +68,8 @@ confirmation before beginning the next phase.
 
 ## 6. Meeting Audio Preconditions
 
-- [ ] Default computer meeting mode to system audio.
-- [ ] Keep microphone explicit for in-room or speakerphone conversations.
+- [x] Default computer meeting mode to system audio.
+- [x] Keep microphone explicit for in-room or speakerphone conversations.
 - [ ] Emit `audio.capture.started` only after the selected source is ready.
 - [ ] Emit and display a source-specific capture failure.
 - [ ] Keep source and speaker confidence explicit in activity windows and prompts.

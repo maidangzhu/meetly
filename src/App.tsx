@@ -11,7 +11,6 @@ import {
   Mic,
   MicOff,
   MonitorUp,
-  PenLine,
   Settings as SettingsIcon,
   Sparkles,
   UploadCloud,
@@ -23,13 +22,10 @@ import {
   DRAG_CURSOR,
   GHOST_ICON_BUTTON,
 } from "./app/constants";
-import {
-  contextDocumentRoleLabel,
-  readDroppedContextFiles,
-  supportedContextDocumentLabel,
-} from "./app/contextDocuments";
+import { readDroppedContextFiles, supportedContextDocumentLabel } from "./app/contextDocuments";
 import { questionKindLabel } from "./app/interviewLogic";
 import { safeInvoke } from "./app/platform";
+import { resolveAudioSourceForSessionChange } from "./app/sessionAudio";
 import type { AudioSource, MeetingPerspective, SessionKind } from "./app/types";
 import { useAgentRuntime } from "./app/useAgentRuntime";
 import { useAssistantAsk } from "./app/useAssistantAsk";
@@ -255,31 +251,18 @@ export function App() {
             />
           ) : ctx.openPanel === "perspective" ? (
             <PerspectivePanel
-              audioSource={ctx.audioSource}
               closePanel={() => void windowActions.setPanel(null)}
               meetingGoal={ctx.meetingGoal}
-              perspective={ctx.meetingPerspective}
               sessionKind={ctx.sessionKind}
               contextDocumentMessage={ctx.contextDocumentMessage}
               contextDocuments={ctx.contextDocuments}
               openFilePicker={openFilePicker}
               removeContextDocument={session.removeContextDocument}
-              setPerspective={(perspective) => {
-                ctx.setMeetingPerspective(perspective);
-                ctx.setAssistantMode(perspective === "candidate" ? "interview" : "interviewer");
-              }}
-              setAudioSource={ctx.setAudioSource}
               setMeetingGoal={ctx.setMeetingGoal}
               setSessionKind={(kind) => {
                 ctx.setSessionKind(kind);
-                ctx.setAudioSource(kind === "meeting" ? "microphone" : "system");
-                ctx.setAssistantMode(
-                  kind === "meeting"
-                    ? "meeting"
-                    : ctx.meetingPerspective === "candidate"
-                      ? "interview"
-                      : "interviewer"
-                );
+                ctx.setAudioSource(resolveAudioSourceForSessionChange(kind, ctx.audioSource));
+                ctx.setAssistantMode("meeting");
               }}
               startIslandDrag={windowActions.startIslandDrag}
               startMeeting={() => void mic.startMicMeeting()}
@@ -399,34 +382,26 @@ function IslandBar({
 }
 
 function PerspectivePanel({
-  audioSource,
   closePanel,
   contextDocumentMessage,
   contextDocuments,
   meetingGoal,
   openFilePicker,
-  perspective,
   removeContextDocument,
   sessionKind,
-  setAudioSource,
   setMeetingGoal,
-  setPerspective,
   setSessionKind,
   startIslandDrag,
   startMeeting,
 }: {
-  audioSource: AudioSource;
   closePanel: () => void;
   contextDocumentMessage: string | null;
   contextDocuments: ReturnType<typeof useMeetlyState>["contextDocuments"];
   meetingGoal: string;
   openFilePicker: () => void;
-  perspective: MeetingPerspective;
   removeContextDocument: (id: string) => void;
   sessionKind: SessionKind;
-  setAudioSource: (source: AudioSource) => void;
   setMeetingGoal: (goal: string) => void;
-  setPerspective: (perspective: MeetingPerspective) => void;
   setSessionKind: (kind: SessionKind) => void;
   startIslandDrag: ReturnType<typeof useWindowActions>["startIslandDrag"];
   startMeeting: () => void;
@@ -445,74 +420,42 @@ function PerspectivePanel({
           <p className="section-label">会话类型</p>
           <div className="mt-2 grid grid-cols-2 border-b border-white/[0.09]">
             <SetupSegment
-              icon={<Sparkles />}
-              isSelected={sessionKind === "interview"}
-              label="面试"
-              onSelect={() => setSessionKind("interview")}
+              icon={<MonitorUp />}
+              isSelected={sessionKind === "remote"}
+              label="远程会议"
+              onSelect={() => setSessionKind("remote")}
             />
             <SetupSegment
               icon={<Handshake />}
-              isSelected={sessionKind === "meeting"}
-              label="会议"
-              onSelect={() => setSessionKind("meeting")}
+              isSelected={sessionKind === "in_person"}
+              label="现场会议"
+              onSelect={() => setSessionKind("in_person")}
             />
           </div>
 
-          {sessionKind === "interview" ? (
-            <div className="mt-5">
-              <p className="section-label">你的角色</p>
-              <div className="mt-2 grid gap-2">
-                <PerspectiveChoice
-                  description="以第一人称组织可直接表达的回答。"
-                  icon={<Sparkles />}
-                  isSelected={perspective === "candidate"}
-                  label="回答问题"
-                  onSelect={() => setPerspective("candidate")}
-                />
-                <PerspectiveChoice
-                  description="观察信号并准备下一轮追问。"
-                  icon={<PenLine />}
-                  isSelected={perspective === "interviewer"}
-                  label="发起提问"
-                  onSelect={() => setPerspective("interviewer")}
-                />
-              </div>
-            </div>
-          ) : (
-            <label className="mt-5 block">
-              <span className="section-label mb-2 block">本次目标</span>
-              <textarea
-                className="ui-field min-h-[110px] resize-none leading-relaxed"
-                placeholder="例如：确认合作范围、启动时间和双方负责人"
-                value={meetingGoal}
-                onChange={(event) => setMeetingGoal(event.target.value)}
-              />
-            </label>
-          )}
+          <label className="mt-5 block">
+            <span className="section-label mb-2 block">本次目标</span>
+            <textarea
+              className="ui-field min-h-[110px] resize-none leading-relaxed"
+              placeholder="例如：确认合作范围、启动时间和双方负责人"
+              value={meetingGoal}
+              onChange={(event) => setMeetingGoal(event.target.value)}
+            />
+          </label>
         </div>
 
         <div className="min-h-0 overflow-y-auto px-5 py-4">
-          <div className="flex items-end justify-between gap-3">
-            <p className="section-label">声音来源</p>
-            <span className="text-[11px] text-white/34">
-              {audioSource === "microphone" ? "现场声音" : "系统输出"}
-            </span>
-          </div>
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <AudioSourceChoice
-              description="身边或电话扬声器"
-              icon={<Mic />}
-              isSelected={audioSource === "microphone"}
-              label="麦克风"
-              onSelect={() => setAudioSource("microphone")}
-            />
-            <AudioSourceChoice
-              description="飞书、Zoom 等"
-              icon={<MonitorUp />}
-              isSelected={audioSource === "system"}
-              label="系统音频"
-              onSelect={() => setAudioSource("system")}
-            />
+          <p className="section-label">声音采集</p>
+          <div className="mt-2 border-y border-white/[0.09] py-3">
+            <div className="flex items-center gap-2 text-sm text-white/76">
+              {sessionKind === "remote" ? <MonitorUp className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              <span>{sessionKind === "remote" ? "对方声音 + 你的声音" : "现场声音"}</span>
+            </div>
+            <p className="mt-1.5 mb-0 text-xs leading-relaxed text-white/42">
+              {sessionKind === "remote"
+                ? "同时监听系统音频和本机麦克风，按时间合并对话。"
+                : "使用本机麦克风监听同一空间里的对话。"}
+            </p>
           </div>
 
           <section className="mt-5 border-t border-white/[0.08] pt-4">
@@ -529,7 +472,7 @@ function PerspectivePanel({
               </button>
             </div>
             <p className="mt-3 mb-0 text-xs leading-relaxed text-white/46">
-              可拖入{sessionKind === "meeting" ? "会议资料" : contextDocumentRoleLabel(perspective)}，用于 Ask 和主动建议。
+              可拖入会议资料，用于 Ask 和主动建议。
             </p>
             {contextDocumentMessage && (
               <p className="mt-2 mb-0 text-xs leading-relaxed text-white/52">{contextDocumentMessage}</p>
@@ -559,8 +502,8 @@ function PerspectivePanel({
           className="ui-primary-button [&_svg]:h-4 [&_svg]:w-4"
           onClick={startMeeting}
         >
-          {sessionKind === "meeting" ? <Handshake /> : <Sparkles />}
-          <span>开始{sessionKind === "meeting" ? "会议" : "面试"}</span>
+          {sessionKind === "remote" ? <MonitorUp /> : <Handshake />}
+          <span>开始{sessionKind === "remote" ? "远程会议" : "现场会议"}</span>
         </button>
       </div>
     </section>
@@ -777,7 +720,7 @@ function ListeningStatusButton({
           ? `转写失败：${transcriptError}`
           : latestText ?? (audioLevel > 0.015
             ? source === "microphone" ? "正在听身边的对话" : "正在听电脑会议"
-            : "正在监听，等待语音")}
+            : source === "microphone" ? "等待现场声音" : "等待电脑播放声音")}
       </p>
     </button>
   );

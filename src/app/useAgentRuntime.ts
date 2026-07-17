@@ -182,6 +182,12 @@ export function useAgentRuntime(ctx: MeetlyState) {
   }, []);
 
   const recordManualAskStarted = useCallback((askId: string) => {
+    runtimeRef.current?.beginManualAsk();
+    setCoachActivity(ctx, null);
+    ctx.setCoachDraft(null);
+    ctx.setIsCoachThinking(false);
+    ctx.coachToolTracesRef.current = [];
+    ctx.coachInFlightRef.current = false;
     const sessionId = currentSessionIdRef.current;
     if (!sessionId) return;
     const event = journalRef.current?.appendEvent({
@@ -206,6 +212,7 @@ export function useAgentRuntime(ctx: MeetlyState) {
     status: "spoken" | "failed",
     reason: string
   ) => {
+    runtimeRef.current?.finishManualAsk();
     const sessionId = currentSessionIdRef.current;
     const eventId = manualAskEventIdsRef.current.get(askId);
     if (!sessionId || !eventId) return;
@@ -399,7 +406,7 @@ function toCoachTrigger(wake: WakeEvent): CoachTrigger {
 
 function toolLabel(name: string) {
   if (name === "read_file") return "读取资料";
-  if (name === "web_fetch") return "获取网页信息";
+  if (name === "web_search" || name === "web_fetch") return "获取网页信息";
   return "使用工具";
 }
 

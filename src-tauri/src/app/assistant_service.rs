@@ -2,8 +2,6 @@ use super::prompt_orchestrator::{build_system_prompt, build_user_message};
 use crate::audio::AudioState;
 use crate::domain::assistant::AssistantMode;
 use crate::providers::llm::{AssistantSuggestion, ChatMessage};
-use futures_util::StreamExt;
-use serde_json::json;
 use tauri::{AppHandle, Emitter};
 
 const ASK_CONTEXT_WINDOW_MS: u64 = 180_000;
@@ -31,12 +29,6 @@ pub struct VoiceAskTurnInput {
 #[serde(rename_all = "camelCase")]
 struct AssistantError {
     message: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct AssistantDelta {
-    text: String,
 }
 
 #[tauri::command]
@@ -142,12 +134,7 @@ pub async fn complete_voice_ask(
         messages.len()
     ));
 
-    let provider =
-        crate::providers::llm::build_from_saved_config(&app).map_err(|error| error.to_string())?;
-    provider
-        .complete_messages(system_prompt, messages)
-        .await
-        .map_err(|error| error.to_string())
+    super::voice_agent::complete(&app, system_prompt, messages).await
 }
 
 fn build_voice_ask_messages(
@@ -238,7 +225,7 @@ async fn run_completion(
     system_prompt: String,
     user_message: String,
 ) -> Result<(), String> {
-    match run_completion_streaming(app.clone(), system_prompt, user_message).await {
+    match super::coach_agent::complete(&app, system_prompt, user_message).await {
         Ok(suggestion) => {
             emit_done(&app, suggestion);
             Ok(())
@@ -255,103 +242,7 @@ async fn run_completion_return(
     system_prompt: String,
     user_message: String,
 ) -> Result<AssistantSuggestion, String> {
-    let provider = crate::providers::llm::build_from_saved_config(&app).map_err(|error| {
-        let message = error.to_string();
-        message
-    })?;
-
-    provider
-        .complete(system_prompt, user_message)
-        .await
-        .map_err(|error| error.to_string())
-}
-
-async fn run_completion_streaming(
-    app: AppHandle,
-    system_prompt: String,
-    user_message: String,
-) -> Result<AssistantSuggestion, String> {
-    let credentials =
-        crate::providers::credentials::resolve(&app, crate::providers::config::ProviderKind::Llm)
-            .map_err(|error| error.to_string())?;
-
-    let body = json!({
-        "model": credentials.model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ],
-        "temperature": 0.3,
-        "stream": true,
-    });
-
-    let response = reqwest::Client::new()
-        .post(&credentials.base_url)
-        .bearer_auth(&credentials.api_key)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|error| error.to_string())?;
-
-    let status = response.status();
-    if !status.is_success() {
-        let error_body = response.text().await.unwrap_or_default();
-        return Err(format!("LLM request failed: {status} {error_body}"));
-    }
-
-    let mut content = String::new();
-    let mut pending = String::new();
-    let mut stream = response.bytes_stream();
-
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|error| error.to_string())?;
-        pending.push_str(&String::from_utf8_lossy(&chunk));
-
-        while let Some(index) = pending.find('\n') {
-            let line = pending[..index].trim().to_string();
-            pending = pending[index + 1..].to_string();
-
-            if line.is_empty() || !line.starts_with("data:") {
-                continue;
-            }
-
-            let data = line.trim_start_matches("data:").trim();
-            if data == "[DONE]" {
-                break;
-            }
-
-            let value: serde_json::Value = match serde_json::from_str(data) {
-                Ok(value) => value,
-                Err(_) => continue,
-            };
-
-            let delta = value
-                .get("choices")
-                .and_then(|choices| choices.get(0))
-                .and_then(|choice| choice.get("delta"))
-                .and_then(|delta| delta.get("content"))
-                .and_then(|content| content.as_str())
-                .unwrap_or("");
-
-            if delta.is_empty() {
-                continue;
-            }
-
-            content.push_str(delta);
-            let _ = app.emit(
-                "assistant_delta",
-                AssistantDelta {
-                    text: delta.to_string(),
-                },
-            );
-        }
-    }
-
-    if content.trim().is_empty() {
-        return Err("LLM stream completed without content.".to_string());
-    }
-
-    Ok(crate::providers::llm::parse_suggestion(&content))
+    super::coach_agent::complete(&app, system_prompt, user_message).await
 }
 
 fn emit_done(app: &AppHandle, suggestion: AssistantSuggestion) {

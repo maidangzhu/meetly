@@ -1,10 +1,14 @@
 use anyhow::{anyhow, Result};
 use futures_util::StreamExt;
 use serde::Serialize;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use tauri::{AppHandle, Emitter};
 use tokio::task::JoinHandle;
 
+#[cfg(target_os = "macos")]
+mod microphone;
 mod speaker;
 mod transcript_buffer;
 mod vad;
@@ -38,6 +42,7 @@ pub struct AudioStatus {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioLevelChanged {
+    pub source: String,
     pub level: f32,
     pub peak: f32,
     pub rms: f32,
@@ -50,10 +55,36 @@ struct TranscriptError {
     message: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureChannelStatus {
+    pub ready: bool,
+    pub sample_rate: Option<u32>,
+    pub device_name: Option<String>,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingCaptureStatus {
+    pub remote: bool,
+    pub system: CaptureChannelStatus,
+    pub microphone: CaptureChannelStatus,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AudioChannelFailure {
+    source: String,
+    message: String,
+}
+
 #[derive(Debug, Default)]
 struct AudioRuntime {
     task: Option<JoinHandle<()>>,
+    stop_signal: Option<Arc<AtomicBool>>,
     sample_rate: Option<u32>,
+    device_name: Option<String>,
     level: f32,
     last_error: Option<String>,
 }
@@ -61,10 +92,33 @@ struct AudioRuntime {
 #[derive(Debug, Default)]
 pub struct AudioState {
     runtime: Arc<Mutex<AudioRuntime>>,
+    microphone_runtime: Arc<Mutex<AudioRuntime>>,
     // Kept separate from `AudioRuntime` because it should survive a
     // stop/start cycle: a user pausing and resuming listening should not
     // lose the last few minutes of context.
     transcript: Arc<Mutex<TranscriptBuffer>>,
+}
+
+#[derive(Clone, Copy)]
+enum CaptureChannel {
+    System,
+    Microphone,
+}
+
+impl CaptureChannel {
+    fn source(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::Microphone => "microphone",
+        }
+    }
+
+    fn speaker(self) -> &'static str {
+        match self {
+            Self::System => "interviewer",
+            Self::Microphone => "user",
+        }
+    }
 }
 
 /// Returns transcript segments from the last `window_ms` milliseconds.
@@ -125,7 +179,14 @@ pub async fn start_listening(
         }
     }
 
-    match start_capture_task(app, state.runtime.clone(), state.transcript.clone()).await {
+    match start_system_capture_task(
+        app,
+        state.runtime.clone(),
+        state.transcript.clone(),
+        Instant::now(),
+    )
+    .await
+    {
         Ok(sample_rate) => {
             tracing::info!(sample_rate, "start_listening: capture task started");
             if let Ok(mut runtime) = state.runtime.lock() {
@@ -152,30 +213,196 @@ pub async fn start_listening(
 }
 
 #[tauri::command]
+pub async fn start_meeting_capture(
+    app: AppHandle,
+    state: tauri::State<'_, AudioState>,
+    remote: bool,
+) -> Result<MeetingCaptureStatus, String> {
+    tracing::info!(remote, "start_meeting_capture: invoked");
+    let started_at = Instant::now();
+
+    let system = if remote {
+        start_system_channel(
+            app.clone(),
+            state.runtime.clone(),
+            state.transcript.clone(),
+            started_at,
+        )
+        .await
+    } else {
+        stop_runtime(state.runtime.clone()).await?;
+        CaptureChannelStatus {
+            ready: false,
+            sample_rate: None,
+            device_name: None,
+            message: None,
+        }
+    };
+
+    let microphone = start_microphone_channel(
+        app.clone(),
+        state.microphone_runtime.clone(),
+        state.transcript.clone(),
+        started_at,
+    )
+    .await;
+
+    for (channel, status) in [
+        (CaptureChannel::System, &system),
+        (CaptureChannel::Microphone, &microphone),
+    ] {
+        if let Some(message) = status.message.as_ref().filter(|_| !status.ready) {
+            let _ = app.emit(
+                "audio_channel_failed",
+                AudioChannelFailure {
+                    source: channel.source().to_string(),
+                    message: message.clone(),
+                },
+            );
+        }
+    }
+
+    Ok(MeetingCaptureStatus {
+        remote,
+        system,
+        microphone,
+    })
+}
+
+#[tauri::command]
 pub async fn stop_listening(state: tauri::State<'_, AudioState>) -> Result<AudioStatus, String> {
+    stop_runtime(state.runtime.clone()).await?;
+
+    Ok(build_audio_status(&state, Some(AudioRunState::Idle)))
+}
+
+#[tauri::command]
+pub async fn stop_meeting_capture(
+    state: tauri::State<'_, AudioState>,
+) -> Result<MeetingCaptureStatus, String> {
+    stop_runtime(state.runtime.clone()).await?;
+    stop_runtime(state.microphone_runtime.clone()).await?;
+    Ok(MeetingCaptureStatus {
+        remote: false,
+        system: idle_channel_status(),
+        microphone: idle_channel_status(),
+    })
+}
+
+async fn stop_runtime(runtime: Arc<Mutex<AudioRuntime>>) -> Result<(), String> {
     let task = {
-        let mut runtime = state
-            .runtime
+        let mut runtime = runtime
             .lock()
             .map_err(|error| format!("Failed to update audio state: {error}"))?;
-
         runtime.level = 0.0;
         runtime.sample_rate = None;
+        runtime.device_name = None;
+        if let Some(stop_signal) = runtime.stop_signal.take() {
+            stop_signal.store(true, Ordering::Release);
+        }
         runtime.task.take()
     };
 
     if let Some(task) = task {
         task.abort();
-        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
-
-    Ok(build_audio_status(&state, Some(AudioRunState::Idle)))
+    Ok(())
 }
 
-async fn start_capture_task(
+fn idle_channel_status() -> CaptureChannelStatus {
+    CaptureChannelStatus {
+        ready: false,
+        sample_rate: None,
+        device_name: None,
+        message: None,
+    }
+}
+
+fn current_channel_status(runtime: &Arc<Mutex<AudioRuntime>>) -> Option<CaptureChannelStatus> {
+    let runtime = runtime.lock().ok()?;
+    runtime.task.as_ref()?;
+    Some(CaptureChannelStatus {
+        ready: true,
+        sample_rate: runtime.sample_rate,
+        device_name: runtime.device_name.clone(),
+        message: None,
+    })
+}
+
+async fn start_system_channel(
     app: AppHandle,
     runtime: Arc<Mutex<AudioRuntime>>,
     transcript: Arc<Mutex<TranscriptBuffer>>,
+    started_at: Instant,
+) -> CaptureChannelStatus {
+    if let Some(status) = current_channel_status(&runtime) {
+        return status;
+    }
+
+    match start_system_capture_task(app, runtime, transcript, started_at).await {
+        Ok(sample_rate) => CaptureChannelStatus {
+            ready: true,
+            sample_rate: Some(sample_rate),
+            device_name: speaker::probe_devices().output_device,
+            message: None,
+        },
+        Err(error) => CaptureChannelStatus {
+            ready: false,
+            sample_rate: None,
+            device_name: None,
+            message: Some(error.to_string()),
+        },
+    }
+}
+
+async fn start_microphone_channel(
+    app: AppHandle,
+    runtime: Arc<Mutex<AudioRuntime>>,
+    transcript: Arc<Mutex<TranscriptBuffer>>,
+    started_at: Instant,
+) -> CaptureChannelStatus {
+    if let Some(status) = current_channel_status(&runtime) {
+        return status;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        match start_microphone_capture_task(app, runtime, transcript, started_at).await {
+            Ok((sample_rate, device_name)) => CaptureChannelStatus {
+                ready: true,
+                sample_rate: Some(sample_rate),
+                device_name: Some(device_name),
+                message: None,
+            },
+            Err(error) => CaptureChannelStatus {
+                ready: false,
+                sample_rate: None,
+                device_name: None,
+                message: Some(error.to_string()),
+            },
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, runtime, transcript, started_at);
+        CaptureChannelStatus {
+            ready: false,
+            sample_rate: None,
+            device_name: None,
+            message: Some(
+                "Native microphone meeting capture is only implemented on macOS.".to_string(),
+            ),
+        }
+    }
+}
+
+async fn start_system_capture_task(
+    app: AppHandle,
+    runtime: Arc<Mutex<AudioRuntime>>,
+    transcript: Arc<Mutex<TranscriptBuffer>>,
+    started_at: Instant,
 ) -> Result<u32> {
     tracing::debug!("start_capture_task: creating SpeakerInput (CoreAudio process tap)");
     let input = speaker::SpeakerInput::new(None).inspect_err(|error| {
@@ -202,6 +429,8 @@ async fn start_capture_task(
             transcript,
             stream,
             sample_rate,
+            CaptureChannel::System,
+            started_at,
         )
         .await;
     });
@@ -217,22 +446,155 @@ async fn start_capture_task(
     Ok(sample_rate)
 }
 
-async fn run_level_capture(
+#[cfg(target_os = "macos")]
+async fn start_microphone_capture_task(
     app: AppHandle,
     runtime: Arc<Mutex<AudioRuntime>>,
     transcript: Arc<Mutex<TranscriptBuffer>>,
-    mut stream: speaker::SpeakerStream,
+    started_at: Instant,
+) -> Result<(u32, String)> {
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+    let stop_signal = Arc::new(AtomicBool::new(false));
+    let stop_for_task = stop_signal.clone();
+    let runtime_for_task = runtime.clone();
+    let task = tokio::task::spawn_blocking(move || {
+        let mut stream = match microphone::MicrophoneStream::new() {
+            Ok(stream) => stream,
+            Err(error) => {
+                let _ = ready_tx.send(Err(error.to_string()));
+                return;
+            }
+        };
+        let sample_rate = stream.sample_rate();
+        let device_name = stream.device_name().to_string();
+        let _ = ready_tx.send(Ok((sample_rate, device_name)));
+        run_microphone_capture_blocking(
+            app,
+            runtime_for_task,
+            transcript,
+            &mut stream,
+            sample_rate,
+            started_at,
+            stop_for_task,
+        );
+    });
+
+    let (sample_rate, device_name) = ready_rx
+        .await
+        .map_err(|_| anyhow!("Native microphone task stopped during startup"))?
+        .map_err(anyhow::Error::msg)?;
+
+    let mut guard = runtime
+        .lock()
+        .map_err(|error| anyhow!("Failed to store microphone task: {error}"))?;
+    guard.task = Some(task);
+    guard.stop_signal = Some(stop_signal);
+    guard.sample_rate = Some(sample_rate);
+    guard.device_name = Some(device_name.clone());
+    guard.level = 0.0;
+    guard.last_error = None;
+    Ok((sample_rate, device_name))
+}
+
+#[cfg(target_os = "macos")]
+fn run_microphone_capture_blocking(
+    app: AppHandle,
+    runtime: Arc<Mutex<AudioRuntime>>,
+    transcript: Arc<Mutex<TranscriptBuffer>>,
+    stream: &mut microphone::MicrophoneStream,
     sample_rate: u32,
+    started_at: Instant,
+    stop_signal: Arc<AtomicBool>,
 ) {
-    let _ = app.emit("audio_capture_started", sample_rate);
+    let channel = CaptureChannel::Microphone;
+    let _ = app.emit("audio_channel_started", channel.source());
+    let mut segmenter = Segmenter::new(VadConfig::from_millis(sample_rate));
+    let mut samples = vec![0.0f32; 2_048];
+    let mut level_chunk = Vec::with_capacity(2_048);
+
+    while !stop_signal.load(Ordering::Acquire) {
+        let count = stream.read_samples(&mut samples);
+        if count == 0 {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            continue;
+        }
+
+        for &sample in &samples[..count] {
+            level_chunk.push(sample);
+            match segmenter.push(sample) {
+                SegmenterEvent::None => {}
+                SegmenterEvent::SpeechStarted => {
+                    let _ = app.emit("speech_segment_started", channel.source());
+                }
+                SegmenterEvent::Discarded => {}
+                SegmenterEvent::SegmentReady(segment) => {
+                    let end_ms = started_at.elapsed().as_millis() as u64;
+                    let start_ms = end_ms
+                        .saturating_sub(segment.samples.len() as u64 * 1000 / sample_rate as u64);
+                    spawn_transcription(
+                        app.clone(),
+                        transcript.clone(),
+                        sample_rate,
+                        segment.samples,
+                        start_ms,
+                        end_ms,
+                        channel,
+                    );
+                }
+            }
+        }
+
+        if level_chunk.len() >= 1_024 {
+            let (rms, peak) = calculate_audio_metrics(&level_chunk);
+            let level = (rms * 8.0).clamp(0.0, 1.0);
+            if let Ok(mut guard) = runtime.lock() {
+                guard.level = level;
+            }
+            let _ = app.emit(
+                "audio_level_changed",
+                AudioLevelChanged {
+                    source: channel.source().to_string(),
+                    level,
+                    peak,
+                    rms,
+                    sample_rate,
+                },
+            );
+            level_chunk.clear();
+        }
+    }
+
+    if let Ok(mut guard) = runtime.lock() {
+        guard.task = None;
+        guard.stop_signal = None;
+        guard.sample_rate = None;
+        guard.device_name = None;
+        guard.level = 0.0;
+    }
+    let _ = app.emit("audio_channel_stopped", channel.source());
+}
+
+async fn run_level_capture<S>(
+    app: AppHandle,
+    runtime: Arc<Mutex<AudioRuntime>>,
+    transcript: Arc<Mutex<TranscriptBuffer>>,
+    mut stream: S,
+    sample_rate: u32,
+    channel: CaptureChannel,
+    started_at: Instant,
+) where
+    S: futures_util::Stream<Item = f32> + Unpin,
+{
+    let _ = app.emit("audio_channel_started", channel.source());
+    if matches!(channel, CaptureChannel::System) {
+        let _ = app.emit("audio_capture_started", sample_rate);
+    }
 
     let hop_size = 1024usize;
     let mut chunk = Vec::with_capacity(hop_size);
     let mut segmenter = Segmenter::new(VadConfig::from_millis(sample_rate));
-    let mut elapsed_samples: u64 = 0;
 
     while let Some(sample) = stream.next().await {
-        elapsed_samples += 1;
         chunk.push(sample);
 
         match segmenter.push(sample) {
@@ -242,7 +604,7 @@ async fn run_level_capture(
             }
             SegmenterEvent::Discarded => {}
             SegmenterEvent::SegmentReady(segment) => {
-                let end_ms = elapsed_samples * 1000 / sample_rate as u64;
+                let end_ms = started_at.elapsed().as_millis() as u64;
                 let start_ms =
                     end_ms.saturating_sub(segment.samples.len() as u64 * 1000 / sample_rate as u64);
 
@@ -253,6 +615,7 @@ async fn run_level_capture(
                     segment.samples,
                     start_ms,
                     end_ms,
+                    channel,
                 );
             }
         }
@@ -271,6 +634,7 @@ async fn run_level_capture(
         let _ = app.emit(
             "audio_level_changed",
             AudioLevelChanged {
+                source: channel.source().to_string(),
                 level,
                 peak,
                 rms,
@@ -287,7 +651,10 @@ async fn run_level_capture(
         guard.level = 0.0;
     }
 
-    let _ = app.emit("audio_capture_stopped", ());
+    let _ = app.emit("audio_channel_stopped", channel.source());
+    if matches!(channel, CaptureChannel::System) {
+        let _ = app.emit("audio_capture_stopped", ());
+    }
 }
 
 /// Transcribes one completed speech segment as an independent task so a
@@ -301,6 +668,7 @@ fn spawn_transcription(
     samples: Vec<f32>,
     start_ms: u64,
     end_ms: u64,
+    channel: CaptureChannel,
 ) {
     tokio::spawn(async move {
         let wav_bytes = match wav::encode_wav(sample_rate, &samples) {
@@ -345,8 +713,8 @@ fn spawn_transcription(
 
                 let segment = TranscriptSegment {
                     id: uuid_like_id(),
-                    source: "system".to_string(),
-                    speaker: "interviewer".to_string(),
+                    source: channel.source().to_string(),
+                    speaker: channel.speaker().to_string(),
                     text: trimmed.to_string(),
                     start_ms,
                     end_ms,

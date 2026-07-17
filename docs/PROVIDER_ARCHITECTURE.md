@@ -245,7 +245,38 @@ Next likely adapters:
 Adding an adapter must not require editing React workflow state or branching on
 provider name inside Dictation, Meeting, Voice Ask, or Coach.
 
-## 9. Migration Sequence
+## 9. Optional Web Search Capability
+
+Web search is an optional Agent tool, not an LLM provider kind. Its initial
+adapter is Exa and its project-wide default is disabled.
+
+The saved setting, local credential entry, Exa transport, normalized result contract,
+and tool schema are shared infrastructure. The consumers are not shared:
+
+- Meeting Coach owns a meeting-specific Agent, context, prompt, session, wake
+  policy, tool registry, cancellation policy, and Coach UI output;
+- Fn Voice Ask becomes an independent general Agent with its own conversation,
+  selected-text context, prompt, tool registry, run identity, and voice-overlay
+  output;
+- Fn+Space Dictation remains a non-Agent transcription/polish/paste workflow.
+
+When search is enabled, each Agent application service may independently add a
+`web_search` registration to its own tool registry. When disabled, neither
+registry contains that tool. The Agents may use the same LLM profile and tool
+factory, but they must not share an Agent instance, session, prompt, priority,
+lifecycle, cancellation, or result-publication path.
+
+Fn and Meeting Coach may run concurrently. Fn does not clear Coach wakes,
+invalidate Coach epochs, suppress new meeting activity, or suspend/resume the
+Coach. Wake-versus-user-action arbitration applies only to meeting Ask/Enter
+inside the meeting workflow; Fn/Fn+Space arbitration remains inside the voice
+workflow.
+
+Search configuration, privacy rules, tool limits, and runtime isolation are
+specified in
+`openspec/changes/add-configurable-agent-web-search/design.md`.
+
+## 10. Migration Sequence
 
 1. Add capability and failure types around current adapters.
 2. Add provider IDs/profile migration while preserving current saved config.

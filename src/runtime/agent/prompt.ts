@@ -15,7 +15,7 @@ export function buildAgentPrompt(wake: WakeEvent, snapshot: ContextSnapshot): Ag
     .join("\n");
 
   const documents = summarizeContextDocuments(snapshot.documents);
-  const roleInstruction = snapshot.sessionKind === "meeting"
+  const roleInstruction = snapshot.sessionKind === "remote" || snapshot.sessionKind === "in_person"
     ? [
         "The user is in a live meeting or negotiation. Act as a proactive side coach.",
         `Primary objective: ${snapshot.goal || "help the user reach a clear, useful outcome without overcommitting"}.`,

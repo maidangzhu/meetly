@@ -10,7 +10,7 @@ import { resetCoachWakeState } from "./coachWakePolicy";
 import { blobToBase64, calculateRms, createId, debugLog, safeInvoke } from "./platform";
 import { getSupportedMicrophoneMimeType } from "./microphoneClip";
 import { buildInterviewReportRequest, generateInterviewReport } from "./reporting";
-import type { InterviewSession, TranscriptSegment } from "./types";
+import type { InterviewSession, MeetingCaptureStatus, TranscriptSegment } from "./types";
 import type { AgentRuntimeActions } from "./useAgentRuntime";
 import type { AutoAssistActions } from "./useAutoAssist";
 import type { MeetlyState } from "./useMeetlyState";
@@ -87,7 +87,7 @@ export function useMicMeeting(
 
     closeMicResources(ctx);
     try {
-      await safeInvoke("stop_listening");
+      await safeInvoke("stop_meeting_capture");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       debugLog(`[audio] stop system capture error message=${message}`);
@@ -132,7 +132,7 @@ export function useMicMeeting(
       id: createId(ctx.sessionKind),
       kind: ctx.sessionKind,
       audioSource: ctx.audioSource,
-      goal: ctx.sessionKind === "meeting" ? ctx.meetingGoal.trim() : "",
+      goal: ctx.meetingGoal.trim(),
       startedAt: Date.now(),
       endedAt: null,
       status: "listening",
@@ -158,31 +158,33 @@ export function useMicMeeting(
       ctx.micChunkIndexRef.current = 0;
       ctx.micStopRequestedRef.current = false;
 
-      if (ctx.audioSource === "microphone") {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-        });
-        ctx.micStreamRef.current = stream;
-        startVadLoop(ctx);
-        const mimeType = getSupportedMicrophoneMimeType();
-        startRecordingSegment(ctx, stream, mimeType, transcribeMicChunk);
-      } else {
-        await safeInvoke("start_listening");
+      const remote = ctx.sessionKind === "remote";
+      const capture = await safeInvoke<MeetingCaptureStatus>("start_meeting_capture", { remote });
+      const anyReady = capture.system.ready || capture.microphone.ready;
+      if (!anyReady) {
+        throw new Error(
+          [capture.system.message, capture.microphone.message].filter(Boolean).join("；") || "没有可用的音频通道"
+        );
       }
+
+      if (capture.system.ready) agent.recordCaptureStarted(nextSession.id, "system");
+      else if (remote) agent.recordCaptureFailed(nextSession.id, "system");
+      if (capture.microphone.ready) agent.recordCaptureStarted(nextSession.id, "microphone");
+      else agent.recordCaptureFailed(nextSession.id, "microphone");
+
+      const degradedMessages = [
+        remote && !capture.system.ready ? `未捕获对方声音：${capture.system.message ?? "系统音频不可用"}` : null,
+        !capture.microphone.ready ? `未捕获你的声音：${capture.microphone.message ?? "麦克风不可用"}` : null,
+      ].filter(Boolean);
+      ctx.setTranscriptError(degradedMessages.length > 0 ? degradedMessages.join("；") : null);
       ctx.setAudioLevel(0.35);
       ctx.setState("listening");
       void windowActions.setPanel("assistant");
-      agent.recordCaptureStarted(nextSession.id, ctx.audioSource);
       agent.wakeSessionStart(nextSession.id, ctx.contextDocumentsRef.current.length > 0);
-      debugLog(`[audio] ${ctx.audioSource} capture started`);
+      debugLog(`[audio] native meeting capture started remote=${remote} system=${capture.system.ready} microphone=${capture.microphone.ready}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      agent.recordCaptureFailed(nextSession.id, ctx.audioSource);
-      ctx.setTranscriptError(`${ctx.audioSource === "microphone" ? "麦克风" : "会议音频"}监听失败：${message}`);
+      ctx.setTranscriptError(`会议监听失败：${message}`);
       debugLog(`[audio] start error message=${message}`);
       session.updateInterviewSession((current) => ({
         ...current,
@@ -223,7 +225,7 @@ export function useMicMeeting(
       ctx.micStopRequestedRef.current = true;
       clearMicTimers(ctx);
       closeMicResources(ctx);
-      void safeInvoke("stop_listening").catch((error) => {
+      void safeInvoke("stop_meeting_capture").catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
         debugLog(`[audio] cleanup stop system capture error message=${message}`);
       });

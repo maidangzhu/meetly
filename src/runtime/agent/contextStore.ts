@@ -22,7 +22,7 @@ export type ContextSnapshot = {
 export class ContextStore {
   private documents: ContextDocument[] = [];
   private perspective: MeetingPerspective = "candidate";
-  private sessionKind: SessionKind = "interview";
+  private sessionKind: SessionKind = "remote";
   private audioSource: AudioSource = "system";
   private goal = "";
   private sessionId: string | null = null;

@@ -31,6 +31,12 @@ type DiagnosticResult = {
   message: string;
 };
 
+type WebSearchSettings = {
+  enabled: boolean;
+  provider: "exa";
+  hasApiKey: boolean;
+};
+
 type AudioRunState = "idle" | "listening" | "setup_required" | "error";
 
 type AudioStatus = {
@@ -242,6 +248,137 @@ export function ProviderSection({
       {section.testResult && (
         <p className={`mt-2 text-xs ${section.testResult.success ? "text-[#b9c6cc]" : "text-[#ff5c70]"}`}>
           {section.testResult.message}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function WebSearchSection() {
+  const [settings, setSettings] = useState<WebSearchSettings>({
+    enabled: false,
+    provider: "exa",
+    hasApiKey: false,
+  });
+  const [apiKey, setApiKey] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<DiagnosticResult | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setSettings(await invoke<WebSearchSettings>("get_web_search_config"));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const save = async () => {
+    setIsSaving(true);
+    setMessage(null);
+    setTestResult(null);
+    try {
+      const next = await invoke<WebSearchSettings>("save_web_search_config", {
+        enabled: settings.enabled,
+        provider: settings.provider,
+        apiKey,
+      });
+      setSettings(next);
+      setApiKey("");
+      setMessage("Web search settings saved.");
+    } catch (error) {
+      setMessage(`Failed to save: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const test = async () => {
+    setIsTesting(true);
+    setTestResult(null);
+    try {
+      setTestResult(await invoke<DiagnosticResult>("test_web_search_config"));
+    } catch (error) {
+      setTestResult({
+        success: false,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  return (
+    <section className="settings-section">
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div>
+          <h2 className="section-title">Web search</h2>
+          <p className="mt-1 mb-0 max-w-[560px] text-xs leading-relaxed text-white/44">
+            默认关闭。开启后，Coach 与 Fn Agent 可分别按需搜索公开网页。
+          </p>
+        </div>
+        <span className={`mt-0.5 text-[11px] ${settings.enabled ? "text-[#b9c6cc]" : "text-white/32"}`}>
+          {settings.enabled ? "已开启" : "默认关闭"}
+        </span>
+      </div>
+
+      <label className="settings-row mb-3 justify-between text-sm">
+        <span>
+          <span className="block text-[13px] font-medium">Exa web search</span>
+          <span className="block text-xs text-white/45">关闭后，两个 Agent 都不会向 Exa 发送搜索请求。</span>
+        </span>
+        <input
+          className="ui-switch"
+          type="checkbox"
+          checked={settings.enabled}
+          onChange={(event) => setSettings((current) => ({ ...current, enabled: event.target.checked }))}
+        />
+      </label>
+
+      <div className="mb-3">
+        <label>
+          <span className={LABEL}>Search provider</span>
+          <select className={FIELD} value={settings.provider} disabled>
+            <option value="exa">Exa</option>
+          </select>
+        </label>
+      </div>
+
+      <div className="mb-4">
+        <label className={LABEL}>
+          Exa API Key {settings.hasApiKey && <span className="text-white/40">(saved — leave blank to keep)</span>}
+        </label>
+        <input
+          className={FIELD}
+          type="password"
+          value={apiKey}
+          onChange={(event) => setApiKey(event.target.value)}
+          placeholder={settings.hasApiKey ? "••••••••" : "exa-..."}
+        />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button className={PRIMARY_BUTTON} disabled={isSaving} onClick={() => void save()}>
+          {isSaving ? "Saving..." : "Save search"}
+        </button>
+        <button
+          className={SECONDARY_BUTTON}
+          disabled={isTesting || !settings.hasApiKey}
+          onClick={() => void test()}
+        >
+          {isTesting ? "Testing..." : "Test Exa"}
+        </button>
+      </div>
+
+      {message && <p className="mt-2 mb-0 text-xs text-white/60">{message}</p>}
+      {testResult && (
+        <p className={`mt-2 mb-0 text-xs ${testResult.success ? "text-[#b9c6cc]" : "text-[#ff5c70]"}`}>
+          {testResult.message}
         </p>
       )}
     </section>
@@ -594,6 +731,7 @@ export function SettingsContent({
           kind="llm"
           onSaved={() => void loadOnboardingStatus()}
         />
+        <WebSearchSection />
         <DictationSection />
         <DiagnosticsSection />
         <UpdateSection />

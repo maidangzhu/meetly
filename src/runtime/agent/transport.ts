@@ -19,7 +19,7 @@ export type AgentTransportCallbacks = {
 export function createPiCoachTransport(): AgentTransport {
   return {
     async complete(prompt, callbacks) {
-      const mode = prompt.snapshot.sessionKind === "meeting"
+      const mode = prompt.snapshot.sessionKind === "remote" || prompt.snapshot.sessionKind === "in_person"
         ? "meeting"
         : prompt.snapshot.perspective === "interviewer"
           ? "interviewer"
