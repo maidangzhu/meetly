@@ -9,23 +9,27 @@ import { isNearScrollBottom } from "../src/app/voiceOverlay/autoScroll.ts";
 assert.deepEqual(VOICE_OVERLAY_PRESENTATION_MODES, ["hidden", "compact", "expanded"]);
 
 const compact = createVoiceOverlayPresentationState();
-assert.deepEqual(compact, { mode: "compact", lastNonHidden: "compact" });
+assert.deepEqual(compact, { mode: "compact" });
 
 const expanded = voiceOverlayPresentationReducer(compact, { type: "expand" });
-assert.deepEqual(expanded, { mode: "expanded", lastNonHidden: "expanded" });
+assert.deepEqual(expanded, { mode: "expanded" });
 
 const hiddenExpanded = voiceOverlayPresentationReducer(expanded, { type: "hide" });
-assert.deepEqual(hiddenExpanded, { mode: "hidden", lastNonHidden: "expanded" });
-assert.deepEqual(voiceOverlayPresentationReducer(hiddenExpanded, { type: "reopen" }), expanded);
+assert.deepEqual(hiddenExpanded, { mode: "hidden" });
+assert.deepEqual(
+  voiceOverlayPresentationReducer(hiddenExpanded, { type: "begin_run" }),
+  compact
+);
 
 const collapsed = voiceOverlayPresentationReducer(expanded, { type: "collapse" });
-assert.deepEqual(collapsed, { mode: "compact", lastNonHidden: "compact" });
+assert.deepEqual(collapsed, compact);
 assert.deepEqual(
-  voiceOverlayPresentationReducer(
-    voiceOverlayPresentationReducer(collapsed, { type: "hide" }),
-    { type: "reopen" }
-  ),
+  voiceOverlayPresentationReducer(compact, { type: "begin_run" }),
   compact
+);
+assert.deepEqual(
+  voiceOverlayPresentationReducer(expanded, { type: "begin_run" }),
+  expanded
 );
 
 assert.equal(

@@ -7,12 +7,11 @@ import {
   FileText,
   GripVertical,
   Handshake,
-  Loader2,
   Mic,
   MicOff,
   MonitorUp,
+  PanelTopOpen,
   Settings as SettingsIcon,
-  Sparkles,
   UploadCloud,
   X,
 } from "lucide-react";
@@ -23,7 +22,6 @@ import {
   GHOST_ICON_BUTTON,
 } from "./app/constants";
 import { readDroppedContextFiles, supportedContextDocumentLabel } from "./app/contextDocuments";
-import { questionKindLabel } from "./app/interviewLogic";
 import { safeInvoke } from "./app/platform";
 import { resolveAudioSourceForSessionChange } from "./app/sessionAudio";
 import type { AudioSource, MeetingPerspective, SessionKind } from "./app/types";
@@ -35,9 +33,8 @@ import { useMicMeeting } from "./app/useMicMeeting";
 import { useSessionActions } from "./app/useSessionActions";
 import { useTauriEvents } from "./app/useTauriEvents";
 import { useWindowActions } from "./app/useWindowActions";
-import { AssistantPreview } from "./components/AssistantPreview";
+import { AgentWorkspace } from "./components/AgentWorkspace";
 import { AudioBars } from "./components/AudioBars";
-import { SettingsContent } from "./SettingsApp";
 import type { OnboardingStatus } from "./settings/OnboardingPanel";
 
 export function App() {
@@ -112,6 +109,36 @@ export function App() {
           toolTraces: [],
         },
       ]);
+      const previewTurns = [
+        {
+          id: "preview-chat-1",
+          createdAt: now + 1,
+          question: "这段讨论里，最需要追问的是什么？",
+          suggestion: {
+            answer: "最需要确认的是验证成功的判断标准。现在只有方向，没有明确的观察窗口、负责人和退出条件。",
+            bullets: ["确认两周内看哪个指标", "指定唯一负责人", "提前约定无效时如何收缩范围"],
+            clarifyingQuestion: null,
+          },
+          error: null,
+          toolTraces: [
+            {
+              id: "preview-search-1",
+              name: "web_search",
+              label: "搜索网页",
+              status: "completed" as const,
+              query: "Paperboy latest product updates",
+              content: [
+                "Paperboy product updates\nhttps://example.com/paperboy",
+                "Paperboy release notes\nhttps://example.com/paperboy/releases",
+              ].join("\n\n"),
+              createdAt: now + 2,
+              completedAt: now + 3,
+            },
+          ],
+        },
+      ];
+      ctx.agentChatTurnsRef.current = previewTurns;
+      ctx.setAgentChatTurns(previewTurns);
       void windowActions.resizeIsland(true);
       return;
     }
@@ -199,7 +226,7 @@ export function App() {
     return (
       <div className="flex h-screen w-screen items-start justify-center overflow-hidden bg-transparent pointer-events-none">
         <button
-          className="pointer-events-auto mt-2 rounded-lg border border-white/10 bg-[rgb(19_21_22_/_0.94)] px-3 py-2 text-white"
+          className="pointer-events-auto mt-2 rounded-lg border border-white/10 bg-[rgb(19_21_22_/_0.86)] px-3 py-2 text-white backdrop-blur-md"
           onClick={windowActions.toggleHidden}
         >
           Show
@@ -211,6 +238,7 @@ export function App() {
   return (
     <main
       className="flex h-screen w-screen items-start justify-center overflow-hidden bg-transparent"
+      style={panelPreview ? { width: 940, height: 620 } : undefined}
       onDragEnter={handleDragOver}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -234,20 +262,27 @@ export function App() {
         >
           {isDraggingFile && (
             <div
-              className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center rounded-lg border border-[#c17f59]/35 bg-[rgb(25_22_20_/_0.9)] text-[#e2c0ad] shadow-[0_0_0_1px_rgb(193_127_89_/_0.1)] backdrop-blur-md"
+              className="context-drop-overlay pointer-events-none absolute inset-0 z-50 flex items-center justify-center rounded-lg border backdrop-blur-sm"
               aria-hidden="true"
             >
-              <div className="flex items-center gap-2 rounded-md bg-[#c17f59]/10 px-3 py-2 text-sm font-medium">
+              <div className="flex items-center gap-2 px-3 py-2 text-sm font-medium">
                 <UploadCloud className="h-4 w-4" />
                 <span>松开上传资料</span>
               </div>
             </div>
           )}
 
-          {ctx.openPanel === "settings" ? (
-            <SettingsExpandedPanel
+          {ctx.openPanel === "assistant" || ctx.openPanel === "settings" ? (
+            <AgentWorkspace
+              askAssistant={assistant.askAssistant}
+              clearConversation={assistant.clearConversation}
               closePanel={() => void windowActions.setPanel(null)}
+              ctx={ctx}
+              initialView={ctx.openPanel === "settings" ? "settings" : "agent"}
+              openFilePicker={openFilePicker}
               startIslandDrag={windowActions.startIslandDrag}
+              toggleSession={toggleSession}
+              toggleStealth={windowActions.toggleStealth}
             />
           ) : ctx.openPanel === "perspective" ? (
             <PerspectivePanel
@@ -269,22 +304,11 @@ export function App() {
             />
           ) : (
             <IslandBar
-              askAssistant={assistant.askAssistant}
               ctx={ctx}
-              dismissAutoAssistHint={session.dismissAutoAssistHint}
               setPanel={windowActions.setPanel}
               startIslandDrag={windowActions.startIslandDrag}
               toggleSession={toggleSession}
               toggleStealth={windowActions.toggleStealth}
-            />
-          )}
-
-          {ctx.openPanel === "assistant" && (
-            <AssistantPanel
-              ctx={ctx}
-              closePanel={() => windowActions.setPanel(null)}
-              startIslandDrag={windowActions.startIslandDrag}
-              openFilePicker={openFilePicker}
             />
           )}
         </div>
@@ -294,17 +318,13 @@ export function App() {
 }
 
 function IslandBar({
-  askAssistant,
   ctx,
-  dismissAutoAssistHint,
   setPanel,
   startIslandDrag,
   toggleSession,
   toggleStealth,
 }: {
-  askAssistant: () => Promise<void>;
   ctx: ReturnType<typeof useMeetlyState>;
-  dismissAutoAssistHint: () => void;
   setPanel: ReturnType<typeof useWindowActions>["setPanel"];
   startIslandDrag: ReturnType<typeof useWindowActions>["startIslandDrag"];
   toggleSession: () => void;
@@ -314,7 +334,7 @@ function IslandBar({
 
   return (
     <section
-      className={`flex h-12 min-w-0 select-none items-center gap-1.5 rounded-lg p-1.5 ${CARD_SURFACE} ${
+      className={`meetly-island flex h-12 min-w-0 select-none items-center gap-1.5 rounded-lg p-1.5 ${CARD_SURFACE} ${
         isListening ? "w-full" : "mx-auto w-fit"
       }`}
       aria-label="Meetly assistant island"
@@ -328,31 +348,31 @@ function IslandBar({
         {isListening ? <MicOff /> : <Mic />}
       </button>
 
-      {isListening && (
+      {isListening ? (
         <div className="flex h-9 min-w-0 flex-1 items-center gap-2">
           <AudioBars level={ctx.audioLevel} tone="cool" />
-          {ctx.autoAssistHint ? (
-            <AutoAssistChip
-              askAssistant={askAssistant}
-              dismissAutoAssistHint={dismissAutoAssistHint}
-              prefetchStatus={ctx.prefetchStatus}
-              hint={ctx.autoAssistHint}
-            />
-          ) : (
-            <ListeningStatusButton
-              audioLevel={ctx.audioLevel}
-              latestText={ctx.partialTranscript?.text ?? ctx.latestTranscript?.text ?? null}
-              source={ctx.audioSource}
-              setPanel={setPanel}
-              statusLabel={getListeningStatusLabel({
-                audioLevel: ctx.audioLevel,
-                hasPartialTranscript: Boolean(ctx.partialTranscript),
-                transcriptError: ctx.transcriptError,
-              })}
-              transcriptError={ctx.transcriptError}
-            />
-          )}
+          <ListeningStatusButton
+            audioLevel={ctx.audioLevel}
+            latestText={ctx.partialTranscript?.text ?? ctx.latestTranscript?.text ?? null}
+            source={ctx.audioSource}
+            setPanel={setPanel}
+            statusLabel={getListeningStatusLabel({
+              audioLevel: ctx.audioLevel,
+              hasPartialTranscript: Boolean(ctx.partialTranscript),
+              transcriptError: ctx.transcriptError,
+            })}
+            transcriptError={ctx.transcriptError}
+          />
         </div>
+      ) : (
+        <button
+          className="voice-toolbar-button"
+          title="打开工作台"
+          aria-label="打开工作台"
+          onClick={() => void setPanel("assistant")}
+        >
+          <PanelTopOpen />
+        </button>
       )}
 
       <button
@@ -407,18 +427,18 @@ function PerspectivePanel({
   startMeeting: () => void;
 }) {
   return (
-    <section className={`app-panel flex h-full w-full flex-col overflow-hidden ${CARD_SURFACE}`}>
+    <section className="session-setup-panel app-panel flex h-full w-full flex-col overflow-hidden">
       <PanelHeader
-        eyebrow="Voice session"
-        title="新会话"
+        eyebrow="MEETING"
+        title="新会议"
         closePanel={closePanel}
         startIslandDrag={startIslandDrag}
       />
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1.08fr)_minmax(300px,0.92fr)] overflow-hidden">
-        <div className="min-h-0 overflow-y-auto border-r border-white/[0.08] px-5 py-4">
+      <div className="session-setup-body grid min-h-0 flex-1 grid-cols-[minmax(0,1.08fr)_minmax(300px,0.92fr)] overflow-hidden">
+        <div className="session-setup-column min-h-0 overflow-y-auto border-r border-white/[0.08] px-6 py-5">
           <p className="section-label">会话类型</p>
-          <div className="mt-2 grid grid-cols-2 border-b border-white/[0.09]">
+          <div className="session-setup-switcher mt-2 grid grid-cols-2">
             <SetupSegment
               icon={<MonitorUp />}
               isSelected={sessionKind === "remote"}
@@ -444,9 +464,9 @@ function PerspectivePanel({
           </label>
         </div>
 
-        <div className="min-h-0 overflow-y-auto px-5 py-4">
+        <div className="session-setup-column min-h-0 overflow-y-auto px-6 py-5">
           <p className="section-label">声音采集</p>
-          <div className="mt-2 border-y border-white/[0.09] py-3">
+          <div className="session-audio-summary mt-2 border-y border-white/[0.09] py-3.5">
             <div className="flex items-center gap-2 text-sm text-white/76">
               {sessionKind === "remote" ? <MonitorUp className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
               <span>{sessionKind === "remote" ? "对方声音 + 你的声音" : "现场声音"}</span>
@@ -458,7 +478,7 @@ function PerspectivePanel({
             </p>
           </div>
 
-          <section className="mt-5 border-t border-white/[0.08] pt-4">
+          <section className="session-context-section mt-5 border-t border-white/[0.08] pt-4">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="section-label">上下文资料</p>
@@ -472,7 +492,7 @@ function PerspectivePanel({
               </button>
             </div>
             <p className="mt-3 mb-0 text-xs leading-relaxed text-white/46">
-              可拖入会议资料，用于 Ask 和主动建议。
+              可拖入会议资料，用于 Agent 对话和主动建议。
             </p>
             {contextDocumentMessage && (
               <p className="mt-2 mb-0 text-xs leading-relaxed text-white/52">{contextDocumentMessage}</p>
@@ -494,7 +514,7 @@ function PerspectivePanel({
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center justify-between gap-2 border-t border-white/[0.08] px-4 py-3">
+      <div className="session-setup-footer flex shrink-0 items-center justify-between gap-2 border-t border-white/[0.08] px-4 py-3">
         <button className={GHOST_ICON_BUTTON} title="返回" onClick={closePanel}>
           <ArrowLeft />
         </button>
@@ -523,11 +543,7 @@ function SetupSegment({
 }) {
   return (
     <button
-      className={`inline-flex h-10 items-center justify-center gap-2 border-b-2 text-sm font-medium transition-colors [&_svg]:h-4 [&_svg]:w-4 ${
-        isSelected
-          ? "border-[#c17f59] text-white"
-          : "border-transparent text-white/42 hover:text-white/72"
-      }`}
+      className={`session-setup-option inline-flex h-11 items-center justify-center gap-2 text-sm font-medium transition-colors [&_svg]:h-4 [&_svg]:w-4 ${isSelected ? "is-selected" : ""}`}
       aria-pressed={isSelected}
       onClick={onSelect}
     >
@@ -607,28 +623,6 @@ function PerspectiveChoice({
   );
 }
 
-function SettingsExpandedPanel({
-  closePanel,
-  startIslandDrag,
-}: {
-  closePanel: () => void;
-  startIslandDrag: ReturnType<typeof useWindowActions>["startIslandDrag"];
-}) {
-  return (
-    <section className={`app-panel flex h-full w-full flex-col overflow-hidden ${CARD_SURFACE}`}>
-      <PanelHeader
-        eyebrow="Workspace"
-        title="设置"
-        closePanel={closePanel}
-        startIslandDrag={startIslandDrag}
-      />
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-        <SettingsContent compact onOnboardingCompleted={closePanel} onQuit={closePanel} />
-      </div>
-    </section>
-  );
-}
-
 function PanelHeader({
   closePanel,
   eyebrow,
@@ -648,44 +642,6 @@ function PanelHeader({
       </div>
       <button className={GHOST_ICON_BUTTON} title="收起" onClick={closePanel}>
         <ChevronDown />
-      </button>
-    </div>
-  );
-}
-
-function AutoAssistChip({
-  askAssistant,
-  dismissAutoAssistHint,
-  hint,
-  prefetchStatus,
-}: {
-  askAssistant: () => Promise<void>;
-  dismissAutoAssistHint: () => void;
-  hint: NonNullable<ReturnType<typeof useMeetlyState>["autoAssistHint"]>;
-  prefetchStatus: ReturnType<typeof useMeetlyState>["prefetchStatus"];
-}) {
-  return (
-    <div className="flex min-w-0 flex-1 items-center gap-1.5" onMouseDown={(event) => event.stopPropagation()}>
-      <button
-        className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-[#c17f59]/30 bg-[#c17f59]/10 px-2.5 text-left text-[12px] text-[#e2c0ad] transition-colors duration-150 hover:bg-[#c17f59]/15"
-        title={hint.candidate.text}
-        onClick={askAssistant}
-      >
-        <Sparkles className="h-[14px] w-[14px] shrink-0" />
-        <span className="min-w-0 flex-1 truncate">
-          {questionKindLabel(hint.candidate.kind)} · 建议已准备
-        </span>
-        {prefetchStatus === "prefetching" && (
-          <Loader2 className="h-[13px] w-[13px] shrink-0 animate-spin text-white/60" />
-        )}
-        {prefetchStatus === "ready" && <Check className="h-3 w-3 shrink-0 text-[#d0a083]" />}
-      </button>
-      <button
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/[0.035] text-white/42 hover:bg-white/[0.08] hover:text-white/72 [&_svg]:h-3.5 [&_svg]:w-3.5"
-        title="忽略提示"
-        onClick={dismissAutoAssistHint}
-      >
-        <X />
       </button>
     </div>
   );
@@ -723,58 +679,6 @@ function ListeningStatusButton({
             : source === "microphone" ? "等待现场声音" : "等待电脑播放声音")}
       </p>
     </button>
-  );
-}
-
-function AssistantPanel({
-  closePanel,
-  ctx,
-  openFilePicker,
-  startIslandDrag,
-}: {
-  closePanel: () => void;
-  ctx: ReturnType<typeof useMeetlyState>;
-  openFilePicker: () => void;
-  startIslandDrag: ReturnType<typeof useWindowActions>["startIslandDrag"];
-}) {
-  return (
-    <section className="app-panel absolute bottom-2 top-[62px] flex w-full flex-col overflow-hidden">
-      <div className="app-panel-header flex h-[52px] items-center justify-between px-3.5 py-2">
-        <div className={`min-w-0 flex-1 ${DRAG_CURSOR}`} onMouseDown={startIslandDrag}>
-          <p className="m-0 text-[10px] text-white/34">
-            {ctx.state === "listening" ? "实时上下文" : "会话记录"}
-          </p>
-          <h1 className="m-0 text-[13px] font-semibold leading-tight text-white/88">语音助手</h1>
-        </div>
-        <button className={GHOST_ICON_BUTTON} title="上传资料" onClick={openFilePicker}>
-          <UploadCloud />
-        </button>
-        <button className={GHOST_ICON_BUTTON} onClick={closePanel}>
-          <ChevronDown className="rotate-180" />
-        </button>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-hidden px-4 py-3">
-        <AssistantPreview
-          transcriptHistory={ctx.transcriptHistory}
-          partialTranscript={ctx.partialTranscript}
-          audioLevel={ctx.audioLevel}
-          isListening={ctx.state === "listening"}
-          transcriptError={ctx.transcriptError}
-          assistantSuggestion={ctx.assistantSuggestion}
-          assistantDraft={ctx.assistantDraft}
-          assistantError={ctx.assistantError}
-          isAsking={ctx.isAsking}
-          coachMessages={ctx.coachMessages}
-          contextDocuments={ctx.contextDocuments}
-          coachDraft={ctx.coachDraft}
-          coachActivity={ctx.coachActivity}
-          isCoachThinking={ctx.isCoachThinking}
-          autoAssistHint={ctx.autoAssistHint}
-          prefetchStatus={ctx.prefetchStatus}
-        />
-      </div>
-    </section>
   );
 }
 

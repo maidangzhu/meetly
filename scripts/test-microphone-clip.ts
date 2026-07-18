@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  MICROPHONE_AUDIO_CONSTRAINTS,
   MICROPHONE_CLIP_TIMESLICE_MS,
   startMicrophoneClip,
 } from "../src/app/microphoneClip";
@@ -40,8 +41,19 @@ class FakeMediaRecorder {
 }
 
 let trackStopped = false;
+let requestedConstraints: MediaStreamConstraints | undefined;
+const track = {
+  label: "MacBook Pro Microphone",
+  getSettings: () => ({
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: false,
+  }),
+  stop: () => { trackStopped = true; },
+};
 const stream = {
-  getTracks: () => [{ stop: () => { trackStopped = true; } }],
+  getAudioTracks: () => [track],
+  getTracks: () => [track],
 } as unknown as MediaStream;
 
 Object.defineProperty(globalThis, "MediaRecorder", {
@@ -50,7 +62,14 @@ Object.defineProperty(globalThis, "MediaRecorder", {
 });
 Object.defineProperty(globalThis, "navigator", {
   configurable: true,
-  value: { mediaDevices: { getUserMedia: async () => stream } },
+  value: {
+    mediaDevices: {
+      getUserMedia: async (constraints: MediaStreamConstraints) => {
+        requestedConstraints = constraints;
+        return stream;
+      },
+    },
+  },
 });
 Object.defineProperty(globalThis, "window", {
   configurable: true,
@@ -58,6 +77,10 @@ Object.defineProperty(globalThis, "window", {
 });
 
 const session = await startMicrophoneClip();
+assert.deepEqual(requestedConstraints, { audio: MICROPHONE_AUDIO_CONSTRAINTS });
+assert.equal(MICROPHONE_AUDIO_CONSTRAINTS.echoCancellation, false);
+assert.equal(MICROPHONE_AUDIO_CONSTRAINTS.noiseSuppression, false);
+assert.equal(MICROPHONE_AUDIO_CONSTRAINTS.autoGainControl, false);
 const recorder = FakeMediaRecorder.lastInstance;
 assert.ok(recorder);
 assert.equal(recorder.timeslice, MICROPHONE_CLIP_TIMESLICE_MS);

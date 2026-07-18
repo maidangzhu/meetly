@@ -63,6 +63,15 @@ export type AssistantSuggestion = {
   clarifyingQuestion: string | null;
 };
 
+export type AgentChatTurn = {
+  id: string;
+  createdAt: number;
+  question: string;
+  suggestion: AssistantSuggestion | null;
+  error: string | null;
+  toolTraces: CoachToolTrace[];
+};
+
 export type AssistantErrorPayload = {
   message: string;
 };
@@ -161,6 +170,18 @@ export type CoachToolTrace = {
   name: string;
   label: string;
   status: "running" | "completed" | "error";
+  query?: string;
+  content?: string;
+  createdAt: number;
+  completedAt?: number;
+};
+
+export type AgentToolTraceEvent = {
+  runId: string;
+  traceId: string;
+  name: string;
+  label: string;
+  status: CoachToolTrace["status"];
   query?: string;
   content?: string;
   createdAt: number;

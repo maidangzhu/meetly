@@ -13,6 +13,15 @@ type MicrophoneClipOptions = {
 
 export const MICROPHONE_CLIP_TIMESLICE_MS = 1_000;
 
+// Keep the input raw. WebKit's defaults enable voice processing, which can
+// contend with meeting and screen-recording apps that are using the same mic.
+export const MICROPHONE_AUDIO_CONSTRAINTS = {
+  echoCancellation: false,
+  noiseSuppression: false,
+  autoGainControl: false,
+  channelCount: { ideal: 1 },
+} satisfies MediaTrackConstraints;
+
 const MICROPHONE_MIME_TYPES = [
   "audio/mp4;codecs=mp4a.40.2",
   "audio/mp4",
@@ -29,7 +38,14 @@ export function getSupportedMicrophoneMimeType() {
 export async function startMicrophoneClip(
   options: MicrophoneClipOptions = {}
 ): Promise<MicrophoneClipSession> {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: MICROPHONE_AUDIO_CONSTRAINTS,
+  });
+  const track = stream.getAudioTracks()[0];
+  const settings = track?.getSettings();
+  debugLog(
+    `[microphone-clip] opened device=${track?.label || "default"} echo_cancellation=${settings?.echoCancellation ?? "unknown"} noise_suppression=${settings?.noiseSuppression ?? "unknown"} auto_gain_control=${settings?.autoGainControl ?? "unknown"}`
+  );
   const mimeType = getSupportedMicrophoneMimeType();
   const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
   const recordingMimeType = recorder.mimeType || mimeType;

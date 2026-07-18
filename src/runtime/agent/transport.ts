@@ -28,6 +28,7 @@ export function createPiCoachTransport(): AgentTransport {
         () => invoke<AssistantSuggestion>("complete_assistant_with_question", {
           mode,
           question: prompt.text,
+          runId: prompt.wake.id,
         }),
         COACH_REQUEST_TIMEOUT_MS,
         () => callbacks?.onRetry?.(2, "request_timeout")

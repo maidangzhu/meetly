@@ -1,8 +1,8 @@
 import {
+  Asterisk,
   Check,
   Loader2,
   Maximize2,
-  MessageCircle,
   Minimize2,
   Plus,
   RotateCcw,
@@ -146,6 +146,8 @@ export function VoiceOverlayApp() {
   const activeVoiceRunId = voiceAskPreviewConversation.activeTurn?.runId ?? null;
   const presentationMode: VoiceOverlayPresentationMode = dictationVisible
     ? "compact"
+    : activeVoiceRunId && presentation.mode === "hidden"
+      ? "compact"
     : voiceAskVisible || presentation.mode === "expanded"
       ? presentation.mode
       : "hidden";
@@ -172,7 +174,7 @@ export function VoiceOverlayApp() {
 
   useEffect(() => {
     if (activeVoiceRunId) {
-      dispatchPresentation({ type: "reopen" });
+      dispatchPresentation({ type: "begin_run" });
     }
   }, [activeVoiceRunId]);
 
@@ -204,7 +206,12 @@ export function VoiceOverlayApp() {
   };
 
   return (
-    <main className="flex h-screen w-screen items-start justify-center overflow-hidden bg-transparent">
+    <main
+      className="voice-overlay-theme flex h-screen w-screen items-start justify-center overflow-hidden bg-transparent"
+      style={import.meta.env.DEV && (voiceAskPreviewPhase || dictationPreviewPhase)
+        ? { width, height }
+        : undefined}
+    >
       <div className="relative h-full w-full p-2.5">
         {!dictationVisible && (voiceAskVisible || presentationMode === "expanded") ? (
           <VoiceAskOverlay
@@ -284,7 +291,7 @@ function VoiceAskOverlay({
     return (
       <section
         className="voice-surface flex h-12 w-full select-none items-center justify-center gap-2 px-3"
-        aria-label="AI 正在思考"
+        aria-label="Agent 正在思考"
         aria-live="polite"
       >
         <Loader2 className="h-3.5 w-3.5 animate-spin text-[#b9c6cc]" />
@@ -296,16 +303,16 @@ function VoiceAskOverlay({
   if (state.phase === "answered" || state.phase === "error") {
     return (
       <section
-        className="flex h-full w-full flex-col overflow-hidden rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.96)] backdrop-blur-2xl"
-        aria-label="AI 回答"
+        className="voice-answer-panel flex h-full w-full flex-col overflow-hidden rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.86)] backdrop-blur-md"
+        aria-label="Agent 回答"
         aria-live="polite"
       >
         <header
           className="flex h-12 shrink-0 cursor-grab select-none items-center gap-2 border-b border-white/[0.08] px-3.5 active:cursor-grabbing"
           onMouseDown={startVoiceOverlayDrag}
         >
-          <MessageCircle className="h-4 w-4 text-[#c99575]" />
-          <span className="text-[13px] font-semibold text-white/82">Ask AI</span>
+          <Asterisk className="h-4 w-4 text-[#71801f]" />
+          <span className="text-[13px] font-semibold text-white/82">Agent</span>
           <button
             type="button"
             className="voice-icon-button ml-auto"
@@ -376,7 +383,7 @@ function VoiceAskOverlay({
         )}
       </div>
       <span className="voice-icon-status" title={state.message ?? undefined}>
-        <MessageCircle />
+        <Asterisk />
       </span>
     </section>
   );
@@ -398,17 +405,17 @@ function VoiceAskConversationPanel({
   return (
     <div className="relative h-full w-full">
       <section
-        className="absolute inset-x-0 top-0 flex w-full flex-col overflow-hidden rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.96)] backdrop-blur-2xl"
+        className="voice-answer-panel absolute inset-x-0 top-0 flex w-full flex-col overflow-hidden rounded-lg border border-white/[0.12] bg-[rgb(24_24_26_/_0.86)] backdrop-blur-md"
         style={{ height: ANSWER_PANEL_HEIGHT }}
-        aria-label="AI 对话"
+        aria-label="Agent 对话"
         aria-live="polite"
       >
         <header
           className="flex h-12 shrink-0 cursor-grab select-none items-center gap-2 border-b border-white/[0.08] px-3.5 active:cursor-grabbing"
           onMouseDown={startVoiceOverlayDrag}
         >
-          <MessageCircle className="h-4 w-4 text-[#c99575]" />
-          <span className="text-[13px] font-semibold text-white/82">Ask AI</span>
+          <Asterisk className="h-4 w-4 text-[#71801f]" />
+          <span className="text-[13px] font-semibold text-white/82">Agent</span>
           <span className="text-[10px] text-white/32">{conversation.turns.length} 轮</span>
           <button
             type="button"
@@ -472,7 +479,7 @@ function VoiceAskConversationPanel({
 
       {conversation.activeTurn && (
         <div
-          className="absolute left-1/2 flex -translate-x-1/2 items-center justify-center rounded-full border border-white/[0.13] bg-[rgb(20_21_22_/_0.97)] px-5 shadow-[0_10px_28px_rgb(0_0_0_/_0.32),inset_0_1px_0_rgb(255_255_255_/_0.04)] backdrop-blur-2xl"
+          className="voice-followup-pill absolute left-1/2 flex -translate-x-1/2 items-center justify-center rounded-full border border-white/[0.13] bg-[rgb(20_21_22_/_0.86)] px-5 shadow-[0_10px_28px_rgb(0_0_0_/_0.32),inset_0_1px_0_rgb(255_255_255_/_0.04)] backdrop-blur-md"
           style={{
             top: ANSWER_PANEL_HEIGHT + FOLLOWUP_PILL_GAP,
             width: 188,
@@ -519,16 +526,16 @@ function ExpandedVoiceAskPanel({
 
   return (
     <section
-      className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-white/[0.12] bg-[rgb(20_21_22_/_0.98)] shadow-[0_24px_70px_rgb(0_0_0_/_0.42)] backdrop-blur-2xl"
-      aria-label="Ask AI 对话应用"
+      className="voice-answer-panel flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-white/[0.12] bg-[rgb(20_21_22_/_0.88)] shadow-[0_24px_70px_rgb(0_0_0_/_0.42)] backdrop-blur-md"
+      aria-label="Agent 对话应用"
       aria-live="polite"
     >
       <header
         className="flex h-13 shrink-0 cursor-grab select-none items-center gap-2 border-b border-white/[0.08] bg-white/[0.018] px-4 active:cursor-grabbing"
         onMouseDown={startVoiceOverlayDrag}
       >
-        <MessageCircle className="h-4 w-4 shrink-0 text-[#c99575]" />
-        <span className="truncate text-[13px] font-semibold text-white/84">Ask AI</span>
+        <Asterisk className="h-4 w-4 shrink-0 text-[#71801f]" />
+        <span className="truncate text-[13px] font-semibold text-white/84">Agent</span>
         {conversation.turns.length > 0 && (
           <span className="shrink-0 text-[10px] text-white/32">
             {conversation.turns.length} 轮
@@ -613,7 +620,7 @@ function ExpandedVoiceAskPanel({
 
           {conversation.turns.length === 0 && !showStandaloneAnswer && !activeTurn && !conversation.error && (
             <div className="flex min-h-64 items-center justify-center text-white/20">
-              <MessageCircle className="h-7 w-7" aria-hidden="true" />
+              <Asterisk className="h-7 w-7" aria-hidden="true" />
             </div>
           )}
 
@@ -634,7 +641,7 @@ function ExpandedVoiceAskPanel({
           ) : isProcessing ? (
             <Loader2 className="h-4 w-4 animate-spin text-[#c99575]" />
           ) : (
-            <MessageCircle className="h-4 w-4 text-white/28" aria-hidden="true" />
+            <Asterisk className="h-4 w-4 text-white/28" aria-hidden="true" />
           )}
         </div>
       </footer>

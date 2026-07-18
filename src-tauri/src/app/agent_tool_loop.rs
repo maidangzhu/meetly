@@ -3,7 +3,7 @@ use crate::providers::llm::{parse_suggestion, AssistantSuggestion, ChatMessage, 
 use crate::providers::{credentials, web};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 const MAX_AGENT_STEPS: usize = 3;
 const MAX_SEARCH_CALLS: usize = 1;
@@ -60,6 +60,20 @@ struct CompletionMessage {
 struct SearchArguments {
     query: String,
     limit: u8,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentToolTraceEvent {
+    run_id: String,
+    trace_id: String,
+    name: String,
+    label: String,
+    status: String,
+    query: Option<String>,
+    content: Option<String>,
+    created_at: u64,
+    completed_at: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -283,6 +297,23 @@ pub(crate) async fn complete(
         }));
 
         for call in message.tool_calls {
+            let tool_trace_id = tool_trace_id(&trace_id, step + 1, &call.id);
+            let query = tool_query(&call.function.name, &call.function.arguments);
+            let created_at = unix_time_ms();
+            emit_tool_trace(
+                app,
+                AgentToolTraceEvent {
+                    run_id: trace_id.clone(),
+                    trace_id: tool_trace_id.clone(),
+                    name: call.function.name.clone(),
+                    label: tool_label(&call.function.name).to_string(),
+                    status: "running".to_string(),
+                    query: query.clone(),
+                    content: None,
+                    created_at,
+                    completed_at: None,
+                },
+            );
             let output = if call.function.name != "web_search" {
                 let output = json!({ "error": "Unknown tool." });
                 log_tool_result(&trace_id, workflow, step + 1, &call.function.name, &output);
@@ -304,6 +335,21 @@ pub(crate) async fn complete(
                 )
                 .await
             };
+            let is_error = output.get("error").is_some();
+            emit_tool_trace(
+                app,
+                AgentToolTraceEvent {
+                    run_id: trace_id.clone(),
+                    trace_id: tool_trace_id,
+                    name: call.function.name.clone(),
+                    label: tool_label(&call.function.name).to_string(),
+                    status: if is_error { "error" } else { "completed" }.to_string(),
+                    query,
+                    content: tool_result_summary(&output),
+                    created_at,
+                    completed_at: Some(unix_time_ms()),
+                },
+            );
 
             request_messages.push(json!({
                 "role": "tool",
@@ -585,6 +631,82 @@ fn generated_trace_id(workflow: AgentWorkflow) -> String {
     format!("{}-{timestamp}", workflow.as_str())
 }
 
+fn unix_time_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or_default()
+}
+
+fn tool_trace_id(run_id: &str, step: usize, call_id: &str) -> String {
+    let call_id = normalized_trace_id(Some(call_id)).unwrap_or_else(|| "call".to_string());
+    format!("{run_id}-tool-{step}-{call_id}")
+}
+
+fn tool_query(tool_name: &str, raw_arguments: &str) -> Option<String> {
+    if tool_name != "web_search" {
+        return None;
+    }
+    serde_json::from_str::<Value>(raw_arguments)
+        .ok()?
+        .get("query")?
+        .as_str()
+        .map(str::trim)
+        .filter(|query| !query.is_empty())
+        .map(|query| safe_log_text(query, MAX_SEARCH_QUERY_CHARS))
+}
+
+fn tool_label(tool_name: &str) -> &'static str {
+    match tool_name {
+        "web_search" => "搜索网页",
+        _ => "使用工具",
+    }
+}
+
+fn tool_result_summary(output: &Value) -> Option<String> {
+    if let Some(error) = output.get("error").and_then(Value::as_str) {
+        return Some(safe_log_text(error, MAX_LOG_CONTENT_CHARS));
+    }
+
+    let results = output.get("results")?.as_array()?;
+    if results.is_empty() {
+        return Some("没有找到可用结果".to_string());
+    }
+
+    let lines = results
+        .iter()
+        .take(5)
+        .filter_map(|result| {
+            let url = result.get("url")?.as_str()?.trim();
+            if url.is_empty() {
+                return None;
+            }
+            let title = result
+                .get("title")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+                .unwrap_or(url);
+            Some(format!(
+                "{}\n{}",
+                safe_log_text(title, 180),
+                safe_log_text(url, 500)
+            ))
+        })
+        .collect::<Vec<_>>();
+
+    (!lines.is_empty()).then(|| lines.join("\n\n"))
+}
+
+fn emit_tool_trace(app: &AppHandle, event: AgentToolTraceEvent) {
+    if let Err(error) = app.emit("agent_tool_trace", event) {
+        let _ = crate::debug_log::append(&format!(
+            "[agent-tool-loop] tool event emit failed error={}",
+            log_json_string(&error.to_string())
+        ));
+    }
+}
+
 fn safe_log_text(value: &str, max_chars: usize) -> String {
     let normalized = value.replace(['\r', '\n', '\t'], " ");
     let mut chars = normalized.chars();
@@ -820,6 +942,30 @@ Current spoken request:\n解释这段话";
         );
         assert_eq!(safe_log_text("one\ntwo\tthree", 64), "one two three");
         assert_eq!(safe_log_text("abcdef", 3), "abc...");
+    }
+
+    #[test]
+    fn tool_trace_helpers_expose_query_and_readable_sources() {
+        assert_eq!(
+            tool_query("web_search", r#"{"query":" Paperboy latest ","limit":3}"#),
+            Some("Paperboy latest".to_string())
+        );
+        let summary = tool_result_summary(&json!({
+            "results": [
+                { "title": "Paperboy", "url": "https://example.com/paperboy" },
+                { "title": "Release notes", "url": "https://example.com/releases" }
+            ]
+        }))
+        .unwrap();
+
+        assert_eq!(
+            summary,
+            "Paperboy\nhttps://example.com/paperboy\n\nRelease notes\nhttps://example.com/releases"
+        );
+        assert_eq!(
+            tool_result_summary(&json!({ "error": "Search unavailable" })),
+            Some("Search unavailable".to_string())
+        );
     }
 
     #[test]

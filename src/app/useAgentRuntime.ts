@@ -10,7 +10,7 @@ import {
   type AgentRuntimeCallbacks,
   type WakeEvent,
 } from "../runtime/agent";
-import { createId, debugLog } from "./platform";
+import { debugLog } from "./platform";
 import type {
   AudioSource,
   CoachMessage,
@@ -387,7 +387,7 @@ function setCoachActivity(
 
 function buildCoachMessage(wake: WakeEvent, text: string, toolTraces: CoachToolTrace[] = []): CoachMessage {
   return {
-    id: createId("coach"),
+    id: wake.id,
     createdAt: Date.now(),
     trigger: toCoachTrigger(wake),
     text,

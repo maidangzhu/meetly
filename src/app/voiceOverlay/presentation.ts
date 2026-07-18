@@ -4,22 +4,18 @@ export type VoiceOverlayPresentationMode = typeof VOICE_OVERLAY_PRESENTATION_MOD
 
 export type VoiceOverlayPresentationState = {
   mode: VoiceOverlayPresentationMode;
-  lastNonHidden: Exclude<VoiceOverlayPresentationMode, "hidden">;
 };
 
 export type VoiceOverlayPresentationAction =
   | { type: "expand" }
   | { type: "collapse" }
   | { type: "hide" }
-  | { type: "reopen" };
+  | { type: "begin_run" };
 
 export function createVoiceOverlayPresentationState(
   initialMode: VoiceOverlayPresentationMode = "compact"
 ): VoiceOverlayPresentationState {
-  return {
-    mode: initialMode,
-    lastNonHidden: initialMode === "expanded" ? "expanded" : "compact",
-  };
+  return { mode: initialMode };
 }
 
 export function voiceOverlayPresentationReducer(
@@ -28,12 +24,12 @@ export function voiceOverlayPresentationReducer(
 ): VoiceOverlayPresentationState {
   switch (action.type) {
     case "expand":
-      return { mode: "expanded", lastNonHidden: "expanded" };
+      return { mode: "expanded" };
     case "collapse":
-      return { mode: "compact", lastNonHidden: "compact" };
+      return { mode: "compact" };
     case "hide":
-      return { ...state, mode: "hidden" };
-    case "reopen":
-      return { ...state, mode: state.lastNonHidden };
+      return { mode: "hidden" };
+    case "begin_run":
+      return state.mode === "hidden" ? { mode: "compact" } : state;
   }
 }

@@ -5,7 +5,9 @@ import type {
   AssistantDeltaPayload,
   AssistantErrorPayload,
   AssistantSuggestion,
+  AgentToolTraceEvent,
   AudioLevelChanged,
+  CoachToolTrace,
   TranscriptError,
   TranscriptSegment,
 } from "./types";
@@ -94,6 +96,60 @@ export function useTauriEvents(
     if (!isTauriRuntime()) return;
 
     let disposed = false;
+    let unlisten: (() => void) | undefined;
+
+    void listen<AgentToolTraceEvent>("agent_tool_trace", (event) => {
+      if (disposed) return;
+      const payload = event.payload;
+      const trace: CoachToolTrace = {
+        id: payload.traceId,
+        name: payload.name,
+        label: payload.label,
+        status: payload.status,
+        query: payload.query,
+        content: payload.content,
+        createdAt: payload.createdAt,
+        completedAt: payload.completedAt,
+      };
+
+      const chatTurnIndex = ctx.agentChatTurnsRef.current.findIndex(
+        (turn) => turn.id === payload.runId
+      );
+      if (chatTurnIndex >= 0) {
+        const next = [...ctx.agentChatTurnsRef.current];
+        const turn = next[chatTurnIndex];
+        next[chatTurnIndex] = {
+          ...turn,
+          toolTraces: upsertToolTrace(turn.toolTraces, trace),
+        };
+        ctx.agentChatTurnsRef.current = next;
+        ctx.setAgentChatTurns(next);
+        return;
+      }
+
+      ctx.setCoachDraft((current) => {
+        if (!current || current.id !== payload.runId) {
+          return current;
+        }
+        const toolTraces = upsertToolTrace(current.toolTraces, trace);
+        ctx.coachToolTracesRef.current = toolTraces;
+        return { ...current, toolTraces };
+      });
+    }).then((nextUnlisten) => {
+      if (disposed) nextUnlisten();
+      else unlisten = nextUnlisten;
+    });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [ctx]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+
+    let disposed = false;
     let unlistenDelta: (() => void) | undefined;
     let unlistenDone: (() => void) | undefined;
     let unlistenError: (() => void) | undefined;
@@ -155,4 +211,17 @@ export function useTauriEvents(
       unlistenError?.();
     };
   }, [agent, ctx, session]);
+}
+
+function upsertToolTrace(current: CoachToolTrace[], trace: CoachToolTrace) {
+  const index = current.findIndex((item) => item.id === trace.id);
+  if (index < 0) return [...current, trace];
+
+  const next = [...current];
+  next[index] = {
+    ...next[index],
+    ...trace,
+    createdAt: next[index].createdAt,
+  };
+  return next;
 }

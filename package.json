@@ -12,6 +12,7 @@
     "test:coach-log": "tsx scripts/replay-latest-coach-log.ts",
     "test:coach-journal": "tsx scripts/test-coach-journal.ts",
     "test:agent-runtime": "tsx scripts/test-agent-runtime-races.ts",
+    "test:agent-chat": "tsx scripts/test-agent-chat.ts",
     "test:dictation": "tsx scripts/test-dictation-state.ts",
     "test:microphone-clip": "tsx scripts/test-microphone-clip.ts",
     "test:session-audio": "tsx scripts/test-session-audio.ts",

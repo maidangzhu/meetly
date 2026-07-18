@@ -320,6 +320,7 @@ fn begin_voice_ask(app: &AppHandle) {
     });
     drop(active);
 
+    crate::window::prepare_voice_ask_overlay(app);
     let _ = app.emit(
         "voice_ask_pressed",
         VoiceAskPressedPayload {

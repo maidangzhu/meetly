@@ -86,6 +86,7 @@ pub async fn complete_assistant_with_question(
     app: AppHandle,
     mode: AssistantMode,
     question: String,
+    run_id: Option<String>,
 ) -> Result<AssistantSuggestion, String> {
     if question.trim().is_empty() {
         return Err("Question is empty.".to_string());
@@ -102,7 +103,7 @@ pub async fn complete_assistant_with_question(
             .replace('\n', " ")
     ));
 
-    run_completion_return(app, system_prompt, question).await
+    run_completion_return(app, run_id, system_prompt, question).await
 }
 
 #[tauri::command]
@@ -226,7 +227,7 @@ async fn run_completion(
     system_prompt: String,
     user_message: String,
 ) -> Result<(), String> {
-    match super::coach_agent::complete(&app, system_prompt, user_message).await {
+    match super::coach_agent::complete(&app, None, system_prompt, user_message).await {
         Ok(suggestion) => {
             emit_done(&app, suggestion);
             Ok(())
@@ -240,10 +241,11 @@ async fn run_completion(
 
 async fn run_completion_return(
     app: AppHandle,
+    trace_id: Option<String>,
     system_prompt: String,
     user_message: String,
 ) -> Result<AssistantSuggestion, String> {
-    super::coach_agent::complete(&app, system_prompt, user_message).await
+    super::coach_agent::complete(&app, trace_id, system_prompt, user_message).await
 }
 
 fn emit_done(app: &AppHandle, suggestion: AssistantSuggestion) {

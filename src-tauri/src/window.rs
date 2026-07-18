@@ -48,6 +48,11 @@ impl Default for VoiceOverlayPlacement {
 }
 
 impl VoiceOverlayPlacement {
+    fn begin_run(&mut self, cursor_monitor: Option<CursorMonitorGeometry>) {
+        self.cursor_monitor = cursor_monitor;
+        self.manually_positioned = false;
+    }
+
     fn set_presentation(&mut self, presentation: VoiceOverlayPresentationMode) {
         self.presentation = presentation;
         if presentation != VoiceOverlayPresentationMode::Hidden {
@@ -86,9 +91,30 @@ struct VoiceOverlayDimensions {
     margin: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IslandPresentationMode {
+    Collapsed,
+    Expanded,
+}
+
+impl IslandPresentationMode {
+    fn from_height(height: u32) -> Self {
+        if height as f64 > COLLAPSED_HEIGHT {
+            Self::Expanded
+        } else {
+            Self::Collapsed
+        }
+    }
+
+    fn is_expanded(self) -> bool {
+        self == Self::Expanded
+    }
+}
+
 #[tauri::command]
 pub fn set_island_height(window: WebviewWindow, height: u32) -> Result<(), String> {
-    let width = if height as f64 > COLLAPSED_HEIGHT {
+    let presentation = IslandPresentationMode::from_height(height);
+    let width = if presentation.is_expanded() {
         EXPANDED_WIDTH
     } else {
         COLLAPSED_WIDTH
@@ -98,7 +124,42 @@ pub fn set_island_height(window: WebviewWindow, height: u32) -> Result<(), Strin
         height as f64 + OUTER_GUTTER * 2.0,
     );
     resize_preserving_position(&window, size).map_err(|error| error.to_string())?;
+    set_island_interactive(&window, presentation)?;
     Ok(())
+}
+
+fn set_island_interactive(
+    window: &WebviewWindow,
+    presentation: IslandPresentationMode,
+) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use tauri_nspanel::ManagerExt;
+
+        let panel = window
+            .app_handle()
+            .get_webview_panel("island")
+            .map_err(|error| format!("Failed to get island panel: {error:?}"))?;
+        if presentation.is_expanded() {
+            panel.set_becomes_key_only_if_needed(false);
+            panel.make_key_and_order_front(None);
+        } else {
+            panel.resign_key_window();
+            panel.set_becomes_key_only_if_needed(true);
+        }
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        window
+            .set_focusable(presentation.is_expanded())
+            .map_err(|error| error.to_string())?;
+        if presentation.is_expanded() {
+            window.set_focus().map_err(|error| error.to_string())?;
+        }
+        Ok(())
+    }
 }
 
 #[tauri::command]
@@ -191,6 +252,10 @@ pub(crate) fn prepare_dictation_overlay(app: &AppHandle) {
     prepare_compact_overlay(app, "dictation");
 }
 
+pub(crate) fn prepare_voice_ask_overlay(app: &AppHandle) {
+    prepare_compact_overlay(app, "voice-ask");
+}
+
 fn prepare_compact_overlay(app: &AppHandle, kind: &str) {
     let app_for_task = app.clone();
     let kind = kind.to_string();
@@ -214,6 +279,7 @@ fn prepare_compact_overlay_on_main(app: &AppHandle, kind: &str) {
             .placement
             .lock()
             .map_err(|error| format!("Failed to lock voice overlay state: {error}"))?;
+        placement.begin_run(cursor_monitor_geometry(&window)?);
         configure_voice_overlay_window(
             app,
             &window,
@@ -225,22 +291,13 @@ fn prepare_compact_overlay_on_main(app: &AppHandle, kind: &str) {
                 placement.cursor_monitor,
             ),
         )?;
-        if placement.manually_positioned {
-            resize_preserving_position(
-                &window,
-                tauri::LogicalSize::new(COMPACT_OVERLAY_WIDTH, COMPACT_OVERLAY_HEIGHT),
-            )
-            .map_err(|error| error.to_string())?;
-        } else {
-            placement.cursor_monitor = cursor_monitor_geometry(&window)?;
-            position_overlay(
-                &window,
-                placement.cursor_monitor,
-                COMPACT_OVERLAY_WIDTH,
-                COMPACT_OVERLAY_HEIGHT,
-                0.0,
-            )?;
-        }
+        position_overlay(
+            &window,
+            placement.cursor_monitor,
+            COMPACT_OVERLAY_WIDTH,
+            COMPACT_OVERLAY_HEIGHT,
+            0.0,
+        )?;
         placement.set_presentation(VoiceOverlayPresentationMode::Compact);
         window.show().map_err(|error| error.to_string())
     })();
@@ -919,9 +976,23 @@ fn setup_macos_panel(window: &WebviewWindow) {
 mod tests {
     use super::{
         anchored_resize_coordinates, bottom_center_coordinates, monitor_contains_cursor,
-        resolve_voice_overlay_dimensions, CursorMonitorGeometry, VoiceOverlayPlacement,
-        VoiceOverlayPresentationMode, COMPACT_OVERLAY_HEIGHT, COMPACT_OVERLAY_WIDTH,
+        resolve_voice_overlay_dimensions, CursorMonitorGeometry, IslandPresentationMode,
+        VoiceOverlayPlacement, VoiceOverlayPresentationMode, COMPACT_OVERLAY_HEIGHT,
+        COMPACT_OVERLAY_WIDTH,
     };
+
+    #[test]
+    fn island_becomes_interactive_only_above_collapsed_height() {
+        assert_eq!(
+            IslandPresentationMode::from_height(54),
+            IslandPresentationMode::Collapsed
+        );
+        assert_eq!(
+            IslandPresentationMode::from_height(55),
+            IslandPresentationMode::Expanded
+        );
+        assert!(IslandPresentationMode::from_height(600).is_expanded());
+    }
 
     #[test]
     fn dictation_overlay_is_centered_near_monitor_bottom() {
@@ -1013,6 +1084,33 @@ mod tests {
             serde_json::to_value(VoiceOverlayPresentationMode::Expanded).unwrap(),
             "expanded"
         );
+    }
+
+    #[test]
+    fn new_voice_run_forgets_the_previous_drag_position() {
+        let mut placement = VoiceOverlayPlacement {
+            manually_positioned: true,
+            ..VoiceOverlayPlacement::default()
+        };
+        let monitor = CursorMonitorGeometry {
+            source: "test",
+            cursor_x: -800.0,
+            cursor_y: 100.0,
+            monitor_x: -1920,
+            monitor_y: -120,
+            monitor_width: 1920,
+            monitor_height: 1080,
+            work_x: -1920,
+            work_y: -120,
+            work_width: 1920,
+            work_height: 1055,
+            scale: 1.0,
+        };
+
+        placement.begin_run(Some(monitor));
+
+        assert!(!placement.manually_positioned);
+        assert_eq!(placement.cursor_monitor.unwrap().monitor_x, -1920);
     }
 
     #[test]

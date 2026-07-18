@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import type {
   AssistantMode,
   AssistantSuggestion,
+  AgentChatTurn,
   AudioSource,
   AutoAssistHint,
   CoachActivity,
@@ -40,6 +41,7 @@ export function useMeetlyState() {
   const [contextDocuments, setContextDocuments] = useState<ContextDocument[]>([]);
   const [contextDocumentMessage, setContextDocumentMessage] = useState<string | null>(null);
   const [assistantSuggestion, setAssistantSuggestion] = useState<AssistantSuggestion | null>(null);
+  const [agentChatTurns, setAgentChatTurns] = useState<AgentChatTurn[]>([]);
   const [assistantDraft, setAssistantDraft] = useState("");
   const [assistantError, setAssistantError] = useState<string | null>(null);
   const [isAsking, setIsAsking] = useState(false);
@@ -81,6 +83,7 @@ export function useMeetlyState() {
   const coachActivityClearTimerRef = useRef<number | null>(null);
   const lastCoachAtRef = useRef(0);
   const pendingAskIdRef = useRef<string | null>(null);
+  const agentChatTurnsRef = useRef<AgentChatTurn[]>([]);
   const currentRecorderStoppedRef = useRef<Promise<void> | null>(null);
   const currentSegmentTranscriptionRef = useRef<Promise<TranscriptSegment | null> | null>(null);
 
@@ -119,6 +122,8 @@ export function useMeetlyState() {
     setContextDocumentMessage,
     assistantSuggestion,
     setAssistantSuggestion,
+    agentChatTurns,
+    setAgentChatTurns,
     assistantDraft,
     setAssistantDraft,
     assistantError,
@@ -169,6 +174,7 @@ export function useMeetlyState() {
     coachActivityClearTimerRef,
     lastCoachAtRef,
     pendingAskIdRef,
+    agentChatTurnsRef,
     currentRecorderStoppedRef,
     currentSegmentTranscriptionRef,
   };
