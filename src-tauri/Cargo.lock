@@ -2727,7 +2727,7 @@ dependencies = [
 
 [[package]]
 name = "meetly"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "accessibility",
  "accessibility-sys",
