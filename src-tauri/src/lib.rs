@@ -32,7 +32,7 @@ pub fn run() {
     #[cfg(target_os = "macos")]
     let builder = builder.plugin(tauri_nspanel::init());
 
-    builder
+    let app = builder
         .invoke_handler(tauri::generate_handler![
             window::set_island_height,
             window::set_island_meeting_active,
@@ -95,6 +95,22 @@ pub fn run() {
             dictation::initialize(app.handle());
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("failed to run Tauri application");
+        .build(tauri::generate_context!())
+        .expect("failed to build Tauri application");
+
+    app.run(|_app, _event| {
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Reopen {
+            has_visible_windows,
+            ..
+        } = _event
+        {
+            let _ = debug_log::append(&format!(
+                "[lifecycle] dock reopen has_visible_windows={has_visible_windows}"
+            ));
+            if let Err(error) = window::reopen_island_window(_app) {
+                let _ = debug_log::append(&format!("[lifecycle] dock reopen failed error={error}"));
+            }
+        }
+    });
 }

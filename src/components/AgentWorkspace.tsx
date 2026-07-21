@@ -14,6 +14,7 @@ import {
   Mic,
   MicOff,
   Minus,
+  PanelTopClose,
   Plus,
   Settings,
   TerminalSquare,
@@ -121,6 +122,14 @@ export function AgentWorkspace({
         </div>
 
         <div className="workspace-header-actions" onMouseDown={(event) => event.stopPropagation()}>
+          <button
+            className="workspace-header-button"
+            title="收起为横条"
+            aria-label="收起为横条"
+            onClick={closePanel}
+          >
+            <PanelTopClose />
+          </button>
           {view === "agent" && (
             <>
               <button className="workspace-header-button" title="新对话" aria-label="新对话" onClick={clearConversation}>

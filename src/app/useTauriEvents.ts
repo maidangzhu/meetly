@@ -30,7 +30,6 @@ export function useTauriEvents(
 
     void listen<boolean>("island_visibility_changed", (event) => {
       if (disposed) return;
-      ctx.setIsHidden(!event.payload);
       if (event.payload) {
         ctx.setOpenPanel("assistant");
       }

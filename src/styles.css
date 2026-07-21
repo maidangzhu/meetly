@@ -1378,7 +1378,7 @@ textarea:focus-visible {
 .workspace-window-control svg {
   width: 8px;
   height: 8px;
-  opacity: 0;
+  opacity: 0.58;
   stroke-width: 2.4;
   transition: opacity 100ms ease;
 }

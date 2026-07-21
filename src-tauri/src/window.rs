@@ -19,6 +19,8 @@ const EXPANDED_OVERLAY_MIN_WIDTH: f64 = 560.0;
 const EXPANDED_OVERLAY_MIN_HEIGHT: f64 = 480.0;
 const EXPANDED_OVERLAY_MARGIN: f64 = 24.0;
 const DICTATION_BOTTOM_OFFSET: f64 = 56.0;
+const NS_WINDOW_STYLE_MASK_RESIZABLE: i32 = 1 << 3;
+const NS_WINDOW_STYLE_MASK_NON_ACTIVATING_PANEL: i32 = 1 << 7;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -98,6 +100,12 @@ enum IslandPresentationMode {
     Expanded,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IslandReopenAction {
+    RestoreExpanded,
+    PresentExisting,
+}
+
 impl IslandPresentationMode {
     fn from_height(height: u32) -> Self {
         if height as f64 > COLLAPSED_HEIGHT {
@@ -155,6 +163,7 @@ pub fn set_island_height(
         .map_err(|error| format!("Failed to lock island window state: {error}"))?;
     set_island_window_level(&window, presentation, placement.meeting_active)?;
     placement.presentation = presentation;
+    drop(placement);
     set_island_interactive(&window, presentation)?;
     Ok(())
 }
@@ -176,6 +185,20 @@ pub fn set_island_meeting_active(
 
 fn should_float_island(presentation: IslandPresentationMode, meeting_active: bool) -> bool {
     presentation == IslandPresentationMode::Collapsed || meeting_active
+}
+
+fn island_reopen_action(presentation: IslandPresentationMode) -> IslandReopenAction {
+    match presentation {
+        IslandPresentationMode::Collapsed => IslandReopenAction::RestoreExpanded,
+        IslandPresentationMode::Expanded => IslandReopenAction::PresentExisting,
+    }
+}
+
+fn island_style_mask(presentation: IslandPresentationMode) -> i32 {
+    match presentation {
+        IslandPresentationMode::Collapsed => NS_WINDOW_STYLE_MASK_NON_ACTIVATING_PANEL,
+        IslandPresentationMode::Expanded => NS_WINDOW_STYLE_MASK_RESIZABLE,
+    }
 }
 
 fn set_island_window_level(
@@ -232,9 +255,14 @@ fn set_island_interactive(
             .get_webview_panel("island")
             .map_err(|error| format!("Failed to get island panel: {error:?}"))?;
         if presentation.is_expanded() {
+            panel.set_style_mask(island_style_mask(presentation));
             panel.set_becomes_key_only_if_needed(false);
-            panel.make_key_and_order_front(None);
+            // The compact panel does not activate Meetly. Order the expanded
+            // workspace in front once even when another app is still active.
+            // Its normal window level still lets other apps cover it later.
+            panel.show();
         } else {
+            panel.set_style_mask(island_style_mask(presentation));
             panel.resign_key_window();
             panel.set_becomes_key_only_if_needed(true);
         }
@@ -434,11 +462,8 @@ pub fn recover_island_window(app: &AppHandle) -> Result<(), String> {
         .placement
         .lock()
         .map_err(|error| format!("Failed to lock island window state: {error}"))?;
-    set_island_window_level(
-        &window,
-        IslandPresentationMode::Expanded,
-        placement.meeting_active,
-    )?;
+    let meeting_active = placement.meeting_active;
+    set_island_window_level(&window, IslandPresentationMode::Expanded, meeting_active)?;
     placement.presentation = IslandPresentationMode::Expanded;
     drop(placement);
     position_top_center_at_cursor(&window)?;
@@ -448,13 +473,62 @@ pub fn recover_island_window(app: &AppHandle) -> Result<(), String> {
             COLLAPSED_HEIGHT,
         )))
         .map_err(|error| error.to_string())?;
-    set_island_interactive(&window, IslandPresentationMode::Expanded)?;
-
     window.show().map_err(|error| error.to_string())?;
+    set_island_interactive(&window, IslandPresentationMode::Expanded)?;
+    activate_macos_application()?;
     window.set_focus().map_err(|error| error.to_string())?;
     app.emit("island_visibility_changed", true)
         .map_err(|error| error.to_string())?;
     let _ = crate::debug_log::append("[menu-bar] restored Meetly workspace expanded");
+    Ok(())
+}
+
+/// Handles an explicit request to reopen Meetly, such as a Dock icon click.
+/// An existing workspace keeps its frame; the compact bar opens as a workspace.
+pub fn reopen_island_window(app: &AppHandle) -> Result<(), String> {
+    let Some(window) = app.get_webview_window("island") else {
+        return Err("Meetly window not found".to_string());
+    };
+    let was_visible = window.is_visible().map_err(|error| error.to_string())?;
+    let state = app.state::<IslandWindowState>();
+    let (presentation, meeting_active) = {
+        let placement = state
+            .placement
+            .lock()
+            .map_err(|error| format!("Failed to lock island window state: {error}"))?;
+        (placement.presentation, placement.meeting_active)
+    };
+
+    if island_reopen_action(presentation) == IslandReopenAction::RestoreExpanded {
+        return recover_island_window(app);
+    }
+
+    set_island_window_level(&window, presentation, meeting_active)?;
+    window.show().map_err(|error| error.to_string())?;
+    set_island_interactive(&window, presentation)?;
+    activate_macos_application()?;
+    window.set_focus().map_err(|error| error.to_string())?;
+    app.emit("island_visibility_changed", true)
+        .map_err(|error| error.to_string())?;
+    let _ = crate::debug_log::append(&format!(
+        "[lifecycle] reopened Meetly workspace was_visible={was_visible}"
+    ));
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn activate_macos_application() -> Result<(), String> {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::NSApplication;
+
+    let mtm = MainThreadMarker::new()
+        .ok_or_else(|| "Meetly activation must run on the macOS main thread".to_string())?;
+    NSApplication::sharedApplication(mtm).activate();
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn activate_macos_application() -> Result<(), String> {
     Ok(())
 }
 
@@ -1066,9 +1140,7 @@ fn setup_macos_panel(window: &WebviewWindow) {
     panel.set_level(NS_FLOATING_WINDOW_LEVEL);
     panel.set_floating_panel(true);
 
-    #[allow(non_upper_case_globals)]
-    const NSWindowStyleMaskNonActivatingPanel: i32 = 1 << 7;
-    panel.set_style_mask(NSWindowStyleMaskNonActivatingPanel);
+    panel.set_style_mask(NS_WINDOW_STYLE_MASK_NON_ACTIVATING_PANEL);
     panel.set_becomes_key_only_if_needed(true);
 
     panel.set_collection_behaviour(
@@ -1088,10 +1160,12 @@ fn setup_macos_panel(window: &WebviewWindow) {
 mod tests {
     use super::{
         anchored_resize_coordinates, bottom_center_coordinates, expanded_window_size,
-        monitor_contains_cursor, resolve_voice_overlay_dimensions, should_float_island,
-        CursorMonitorGeometry, IslandPresentationMode, VoiceOverlayPlacement,
+        island_reopen_action, island_style_mask, monitor_contains_cursor,
+        resolve_voice_overlay_dimensions, should_float_island, CursorMonitorGeometry,
+        IslandPresentationMode, IslandReopenAction, VoiceOverlayPlacement,
         VoiceOverlayPresentationMode, COMPACT_OVERLAY_HEIGHT, COMPACT_OVERLAY_WIDTH,
-        EXPANDED_HEIGHT, EXPANDED_WIDTH, OUTER_GUTTER,
+        EXPANDED_HEIGHT, EXPANDED_WIDTH, NS_WINDOW_STYLE_MASK_NON_ACTIVATING_PANEL,
+        NS_WINDOW_STYLE_MASK_RESIZABLE, OUTER_GUTTER,
     };
 
     #[test]
@@ -1127,6 +1201,30 @@ mod tests {
             false
         ));
         assert!(should_float_island(IslandPresentationMode::Expanded, true));
+    }
+
+    #[test]
+    fn dock_reopen_expands_the_bar_but_preserves_an_existing_workspace() {
+        assert_eq!(
+            island_reopen_action(IslandPresentationMode::Collapsed),
+            IslandReopenAction::RestoreExpanded
+        );
+        assert_eq!(
+            island_reopen_action(IslandPresentationMode::Expanded),
+            IslandReopenAction::PresentExisting
+        );
+    }
+
+    #[test]
+    fn compact_is_non_activating_but_workspace_uses_an_activating_style() {
+        assert_eq!(
+            island_style_mask(IslandPresentationMode::Collapsed),
+            NS_WINDOW_STYLE_MASK_NON_ACTIVATING_PANEL
+        );
+        assert_eq!(
+            island_style_mask(IslandPresentationMode::Expanded),
+            NS_WINDOW_STYLE_MASK_RESIZABLE
+        );
     }
 
     #[test]

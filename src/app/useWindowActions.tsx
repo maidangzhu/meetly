@@ -44,10 +44,9 @@ export function useWindowActions(ctx: MeetlyState) {
     }
   }, []);
 
-  const toggleHidden = useCallback(async () => {
-    ctx.setIsHidden((current) => !current);
-    await safeInvoke("set_island_visible", { visible: ctx.isHidden });
-  }, [ctx]);
+  const closeWorkspace = useCallback(async () => {
+    await safeInvoke("set_island_visible", { visible: false });
+  }, []);
 
   const toggleStealth = useCallback(async () => {
     const next = !ctx.isStealthOn;
@@ -98,12 +97,12 @@ export function useWindowActions(ctx: MeetlyState) {
   }, [ctx.sessionKind, ctx.state]);
 
   return {
+    closeWorkspace,
     openSettings,
     resizeIsland,
     setPanel,
     startIslandDrag,
     status,
-    toggleHidden,
     toggleStealth,
     toggleWorkspaceMaximized,
   };

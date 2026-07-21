@@ -219,19 +219,6 @@ export function App() {
     await processContextFiles(files);
   };
 
-  if (ctx.isHidden) {
-    return (
-      <div className="flex h-screen w-screen items-start justify-center overflow-hidden bg-transparent pointer-events-none">
-        <button
-          className="pointer-events-auto mt-2 rounded-lg border border-white/10 bg-[rgb(19_21_22_/_0.86)] px-3 py-2 text-white backdrop-blur-md"
-          onClick={windowActions.toggleHidden}
-        >
-          Show
-        </button>
-      </div>
-    );
-  }
-
   return (
     <main
       className="flex h-screen w-screen items-start justify-center overflow-hidden bg-transparent"
@@ -274,7 +261,7 @@ export function App() {
               askAssistant={assistant.askAssistant}
               clearConversation={assistant.clearConversation}
               closePanel={() => void windowActions.setPanel(null)}
-              closeWorkspace={windowActions.toggleHidden}
+              closeWorkspace={windowActions.closeWorkspace}
               ctx={ctx}
               initialView={ctx.openPanel === "settings" ? "settings" : "agent"}
               openFilePicker={openFilePicker}
@@ -284,7 +271,8 @@ export function App() {
             />
           ) : ctx.openPanel === "perspective" ? (
             <PerspectivePanel
-              closePanel={() => void windowActions.setPanel(null)}
+              backToWorkspace={() => void windowActions.setPanel("assistant")}
+              collapseToBar={() => void windowActions.setPanel(null)}
               meetingGoal={ctx.meetingGoal}
               sessionKind={ctx.sessionKind}
               contextDocumentMessage={ctx.contextDocumentMessage}
@@ -400,7 +388,8 @@ function IslandBar({
 }
 
 function PerspectivePanel({
-  closePanel,
+  backToWorkspace,
+  collapseToBar,
   contextDocumentMessage,
   contextDocuments,
   meetingGoal,
@@ -412,7 +401,8 @@ function PerspectivePanel({
   startIslandDrag,
   startMeeting,
 }: {
-  closePanel: () => void;
+  backToWorkspace: () => void;
+  collapseToBar: () => void;
   contextDocumentMessage: string | null;
   contextDocuments: ReturnType<typeof useMeetlyState>["contextDocuments"];
   meetingGoal: string;
@@ -429,7 +419,7 @@ function PerspectivePanel({
       <PanelHeader
         eyebrow="MEETING"
         title="新会议"
-        closePanel={closePanel}
+        closePanel={collapseToBar}
         startIslandDrag={startIslandDrag}
       />
 
@@ -513,7 +503,12 @@ function PerspectivePanel({
       </div>
 
       <div className="session-setup-footer flex shrink-0 items-center justify-between gap-2 border-t border-white/[0.08] px-4 py-3">
-        <button className={GHOST_ICON_BUTTON} title="返回" onClick={closePanel}>
+        <button
+          className={GHOST_ICON_BUTTON}
+          title="返回工作台"
+          aria-label="返回工作台"
+          onClick={backToWorkspace}
+        >
           <ArrowLeft />
         </button>
         <button

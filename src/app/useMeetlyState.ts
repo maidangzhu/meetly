@@ -26,7 +26,6 @@ import { createInitialCoachWakeState } from "./coachWakePolicy";
 export function useMeetlyState() {
   const [state, setState] = useState<IslandState>("idle");
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
-  const [isHidden, setIsHidden] = useState(false);
   const [isStealthOn, setIsStealthOn] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [latestTranscript, setLatestTranscript] = useState<TranscriptSegment | null>(null);
@@ -92,8 +91,6 @@ export function useMeetlyState() {
     setState,
     openPanel,
     setOpenPanel,
-    isHidden,
-    setIsHidden,
     isStealthOn,
     setIsStealthOn,
     audioLevel,

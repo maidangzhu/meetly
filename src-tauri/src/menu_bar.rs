@@ -34,7 +34,7 @@ pub fn setup(app: &App) -> tauri::Result<()> {
             };
 
             let result = match action {
-                MenuAction::Show => crate::window::recover_island_window(app),
+                MenuAction::Show => crate::window::reopen_island_window(app),
                 MenuAction::Settings => crate::window::open_settings_window(app.clone()),
                 MenuAction::Quit => {
                     app.exit(0);
