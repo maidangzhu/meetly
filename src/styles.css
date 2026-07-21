@@ -1319,10 +1319,73 @@ textarea:focus-visible {
 /* Paper workspace: quiet chrome, editorial type, and one restrained accent. */
 .meetly-workspace {
   grid-template-columns: 62px minmax(0, 1fr);
+  grid-template-rows: 48px minmax(0, 1fr);
   border-color: #d8d9d2;
   background: #f5f5f2;
   box-shadow: 0 18px 50px rgb(26 28 22 / 0.18);
   color: #252720;
+}
+
+.workspace-titlebar {
+  display: grid;
+  min-width: 0;
+  grid-column: 1 / -1;
+  grid-row: 1;
+  grid-template-columns: 96px minmax(0, 1fr) 96px;
+  align-items: center;
+  border-bottom: 1px solid #dadbd4;
+  background: #f0f1ec;
+  cursor: grab;
+  user-select: none;
+}
+
+.workspace-titlebar:active {
+  cursor: grabbing;
+}
+
+.workspace-window-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 15px;
+}
+
+.workspace-window-control {
+  display: grid;
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgb(0 0 0 / 0.13);
+  border-radius: 50%;
+  padding: 0;
+  color: rgb(39 37 31 / 0.68);
+  cursor: default;
+}
+
+.workspace-window-control.is-close {
+  background: #ff5f57;
+}
+
+.workspace-window-control.is-minimize {
+  background: #febc2e;
+}
+
+.workspace-window-control.is-maximize {
+  background: #28c840;
+}
+
+.workspace-window-control svg {
+  width: 8px;
+  height: 8px;
+  opacity: 0;
+  stroke-width: 2.4;
+  transition: opacity 100ms ease;
+}
+
+.workspace-window-controls:hover .workspace-window-control svg,
+.workspace-window-control:focus-visible svg {
+  opacity: 1;
 }
 
 .meetly-workspace button:focus-visible,
@@ -1334,6 +1397,8 @@ textarea:focus-visible {
 }
 
 .workspace-rail {
+  grid-column: 1;
+  grid-row: 2;
   border-right-color: #dadbd4;
   background: #ebece7;
 }
@@ -1438,7 +1503,13 @@ textarea:focus-visible {
 }
 
 .workspace-stage {
+  grid-column: 2;
+  grid-row: 2;
   background: #f7f7f4;
+}
+
+.workspace-titlebar .workspace-title {
+  justify-self: center;
 }
 
 .workspace-header {
@@ -1455,14 +1526,20 @@ textarea:focus-visible {
 .workspace-title h1 {
   color: #272920;
   font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
-  font-size: 24px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .workspace-title > span {
   color: #8a8d82;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   font-size: 10px;
+}
+
+.workspace-titlebar .workspace-header-actions {
+  min-width: 96px;
+  justify-content: flex-end;
+  padding-right: 10px;
 }
 
 .workspace-header-button,
@@ -1474,6 +1551,13 @@ textarea:focus-visible {
   background: transparent;
   padding: 0;
   color: #72766a;
+}
+
+.workspace-titlebar .workspace-header-button {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
 }
 
 .workspace-header-button:hover,
@@ -1618,7 +1702,12 @@ textarea:focus-visible {
 }
 
 .agent-composer-footer > span {
-  color: #96998e;
+  display: none;
+}
+
+.agent-composer-footer {
+  justify-content: flex-end;
+  padding-left: 7px;
 }
 
 .agent-composer-footer button {
@@ -1633,29 +1722,36 @@ textarea:focus-visible {
 
 .agent-tool-list {
   display: grid;
-  max-width: 680px;
-  gap: 7px;
-  margin: 10px 0 2px;
+  width: 100%;
+  max-width: none;
+  gap: 0;
+  margin: 12px 0 4px;
+  border-top: 1px solid #dfe1d9;
+  border-bottom: 1px solid #dfe1d9;
 }
 
 .agent-turn > .agent-tool-list {
-  width: min(88%, 680px);
-  margin-left: auto;
+  width: 100%;
+  margin-left: 0;
 }
 
 .agent-tool-row {
+  min-width: 0;
   overflow: hidden;
-  border: 1px solid #dfe1d9;
-  border-radius: 7px;
-  background: rgb(247 248 244 / 0.78);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.agent-tool-row + .agent-tool-row {
+  border-top: 1px solid #e4e5df;
 }
 
 .agent-tool-row.is-running {
-  border-color: #d8dcc1;
+  background: rgb(241 243 230 / 0.58);
 }
 
 .agent-tool-row.is-error {
-  border-color: #e6cece;
   background: #faf5f5;
 }
 

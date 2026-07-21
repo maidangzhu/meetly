@@ -122,15 +122,12 @@ export function App() {
           error: null,
           toolTraces: [
             {
-              id: "preview-search-1",
-              name: "web_search",
-              label: "搜索网页",
+              id: "preview-read-file-1",
+              name: "read_file",
+              label: "读取资料",
               status: "completed" as const,
-              query: "Paperboy latest product updates",
-              content: [
-                "Paperboy product updates\nhttps://example.com/paperboy",
-                "Paperboy release notes\nhttps://example.com/paperboy/releases",
-              ].join("\n\n"),
+              query: "产品背景.md",
+              content: "产品背景.md\n\n这份资料记录了产品目标、当前约束和本轮会议需要确认的决策。",
               createdAt: now + 2,
               completedAt: now + 3,
             },
@@ -277,12 +274,13 @@ export function App() {
               askAssistant={assistant.askAssistant}
               clearConversation={assistant.clearConversation}
               closePanel={() => void windowActions.setPanel(null)}
+              closeWorkspace={windowActions.toggleHidden}
               ctx={ctx}
               initialView={ctx.openPanel === "settings" ? "settings" : "agent"}
               openFilePicker={openFilePicker}
               startIslandDrag={windowActions.startIslandDrag}
               toggleSession={toggleSession}
-              toggleStealth={windowActions.toggleStealth}
+              toggleWorkspaceMaximized={windowActions.toggleWorkspaceMaximized}
             />
           ) : ctx.openPanel === "perspective" ? (
             <PerspectivePanel

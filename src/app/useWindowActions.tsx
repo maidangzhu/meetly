@@ -26,8 +26,23 @@ export function useWindowActions(ctx: MeetlyState) {
 
   const setPanel = useCallback(async (panel: OpenPanel) => {
     ctx.setOpenPanel(panel);
+    if (panel === null && isTauriRuntime()) {
+      const window = getCurrentWindow();
+      if (await window.isMaximized()) {
+        await window.unmaximize();
+      }
+    }
     await resizeIsland(panel !== null);
   }, [ctx, resizeIsland]);
+
+  const toggleWorkspaceMaximized = useCallback(async () => {
+    if (!isTauriRuntime()) return;
+    try {
+      await getCurrentWindow().toggleMaximize();
+    } catch (error) {
+      console.error("Failed to resize workspace:", error);
+    }
+  }, []);
 
   const toggleHidden = useCallback(async () => {
     ctx.setIsHidden((current) => !current);
@@ -90,6 +105,7 @@ export function useWindowActions(ctx: MeetlyState) {
     status,
     toggleHidden,
     toggleStealth,
+    toggleWorkspaceMaximized,
   };
 }
 

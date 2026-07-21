@@ -29,7 +29,11 @@ export function useTauriEvents(
     let unlisten: (() => void) | undefined;
 
     void listen<boolean>("island_visibility_changed", (event) => {
-      if (!disposed) ctx.setIsHidden(!event.payload);
+      if (disposed) return;
+      ctx.setIsHidden(!event.payload);
+      if (event.payload) {
+        ctx.setOpenPanel("assistant");
+      }
     }).then((nextUnlisten) => {
       if (disposed) nextUnlisten();
       else unlisten = nextUnlisten;

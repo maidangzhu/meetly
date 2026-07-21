@@ -5,20 +5,20 @@ import {
   ChevronDown,
   AudioLines,
   CircleDot,
-  Eye,
-  EyeOff,
   FileClock,
   FileText,
   Globe2,
   Keyboard,
   ListTree,
+  Maximize2,
   Mic,
   MicOff,
-  PanelTopClose,
+  Minus,
   Plus,
   Settings,
   TerminalSquare,
   TriangleAlert,
+  X,
 } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import ReactMarkdown from "react-markdown";
@@ -34,12 +34,13 @@ type AgentWorkspaceProps = {
   askAssistant: (message?: string) => Promise<void>;
   clearConversation: () => void;
   closePanel: () => void;
+  closeWorkspace: () => Promise<void>;
   ctx: ReturnType<typeof useMeetlyState>;
   initialView?: WorkspaceView;
   openFilePicker: () => void;
   startIslandDrag: (event: MouseEvent<HTMLElement>) => Promise<void>;
   toggleSession: () => void;
-  toggleStealth: () => Promise<void>;
+  toggleWorkspaceMaximized: () => Promise<void>;
 };
 
 const NAV_ITEMS: Array<{
@@ -60,12 +61,13 @@ export function AgentWorkspace({
   askAssistant,
   clearConversation,
   closePanel,
+  closeWorkspace,
   ctx,
   initialView = "agent",
   openFilePicker,
   startIslandDrag,
   toggleSession,
-  toggleStealth,
+  toggleWorkspaceMaximized,
 }: AgentWorkspaceProps) {
   const [view, setView] = useState<WorkspaceView>(initialView);
   const [draft, setDraft] = useState("");
@@ -85,11 +87,54 @@ export function AgentWorkspace({
 
   return (
     <section className="meetly-workspace" aria-label="Meetly workspace">
-      <aside className="workspace-rail">
-        <div className="workspace-brand" title="拖动工作台" onMouseDown={startIslandDrag}>
-          <span className="workspace-brand-mark">m</span>
+      <header className="workspace-titlebar" onMouseDown={startIslandDrag}>
+        <div className="workspace-window-controls" onMouseDown={(event) => event.stopPropagation()}>
+          <button
+            className="workspace-window-control is-close"
+            title="关闭窗口"
+            aria-label="关闭窗口"
+            onClick={() => void closeWorkspace()}
+          >
+            <X />
+          </button>
+          <button
+            className="workspace-window-control is-minimize"
+            title="收起到横条"
+            aria-label="收起到横条"
+            onClick={closePanel}
+          >
+            <Minus />
+          </button>
+          <button
+            className="workspace-window-control is-maximize"
+            title="放大或还原工作台"
+            aria-label="放大或还原工作台"
+            onClick={() => void toggleWorkspaceMaximized()}
+          >
+            <Maximize2 />
+          </button>
         </div>
 
+        <div className="workspace-title">
+          <h1>{NAV_ITEMS.find((item) => item.id === view)?.label}</h1>
+          {view === "agent" && <span>{ctx.state === "listening" ? "Listening" : "Ready"}</span>}
+        </div>
+
+        <div className="workspace-header-actions" onMouseDown={(event) => event.stopPropagation()}>
+          {view === "agent" && (
+            <>
+              <button className="workspace-header-button" title="新对话" aria-label="新对话" onClick={clearConversation}>
+                <Plus />
+              </button>
+              <button className="workspace-header-button" title="上传资料" aria-label="上传资料" onClick={openFilePicker}>
+                <FileText />
+              </button>
+            </>
+          )}
+        </div>
+      </header>
+
+      <aside className="workspace-rail">
         <nav className="workspace-nav" aria-label="Workspace">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
@@ -124,37 +169,6 @@ export function AgentWorkspace({
       </aside>
 
       <div className="workspace-stage">
-        <header className="workspace-header">
-          <div className="workspace-title">
-            <h1>{NAV_ITEMS.find((item) => item.id === view)?.label}</h1>
-            {view === "agent" && <span>{ctx.state === "listening" ? "Listening" : "Ready"}</span>}
-          </div>
-          <div className="workspace-header-actions">
-            {view === "agent" && (
-              <>
-                <button className="workspace-header-button" title="新对话" aria-label="新对话" onClick={clearConversation}>
-                  <Plus />
-                </button>
-                <button className="workspace-header-button" title="上传资料" aria-label="上传资料" onClick={openFilePicker}>
-                  <FileText />
-                </button>
-              </>
-            )}
-            <button
-              className={ctx.isStealthOn ? "workspace-header-button is-active" : "workspace-header-button"}
-              title={ctx.isStealthOn ? "当前对屏幕共享不可见" : "当前对屏幕共享可见"}
-              aria-label={ctx.isStealthOn ? "切换为可见" : "切换为不可见"}
-              aria-pressed={ctx.isStealthOn}
-              onClick={() => void toggleStealth()}
-            >
-              {ctx.isStealthOn ? <EyeOff /> : <Eye />}
-            </button>
-            <button className="workspace-collapse-button" title="收起工作台" aria-label="收起工作台" onClick={closePanel}>
-              <PanelTopClose />
-            </button>
-          </div>
-        </header>
-
         {view === "agent" ? (
           <div className="agent-layout">
             <div className="agent-column">
@@ -175,7 +189,6 @@ export function AgentWorkspace({
                   onKeyDown={handleInputKeyDown}
                 />
                 <div className="agent-composer-footer">
-                  <span>{ctx.state === "listening" ? "实时上下文已连接" : "会话上下文已保留"}</span>
                   <button
                     data-testid="agent-send"
                     title="发送"

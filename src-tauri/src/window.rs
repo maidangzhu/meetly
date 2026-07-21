@@ -8,6 +8,7 @@ use tauri::{
 const COLLAPSED_WIDTH: f64 = 600.0;
 const EXPANDED_WIDTH: f64 = 920.0;
 const COLLAPSED_HEIGHT: f64 = 54.0;
+const EXPANDED_HEIGHT: f64 = 600.0;
 const OUTER_GUTTER: f64 = 10.0;
 const TOP_OFFSET: i32 = 54;
 const COMPACT_OVERLAY_WIDTH: f64 = 320.0;
@@ -132,6 +133,10 @@ fn set_island_interactive(
     window: &WebviewWindow,
     presentation: IslandPresentationMode,
 ) -> Result<(), String> {
+    window
+        .set_resizable(presentation.is_expanded())
+        .map_err(|error| error.to_string())?;
+
     #[cfg(target_os = "macos")]
     {
         use tauri_nspanel::ManagerExt;
@@ -331,11 +336,12 @@ pub fn recover_island_window(app: &AppHandle) -> Result<(), String> {
         return Err("Meetly window not found".to_string());
     };
 
+    window.unmaximize().map_err(|error| error.to_string())?;
     window
         .set_min_size(None::<tauri::LogicalSize<f64>>)
         .map_err(|error| error.to_string())?;
     window
-        .set_size(collapsed_window_size())
+        .set_size(expanded_window_size())
         .map_err(|error| error.to_string())?;
     position_top_center_at_cursor(&window)?;
     window
@@ -344,12 +350,13 @@ pub fn recover_island_window(app: &AppHandle) -> Result<(), String> {
             COLLAPSED_HEIGHT,
         )))
         .map_err(|error| error.to_string())?;
+    set_island_interactive(&window, IslandPresentationMode::Expanded)?;
 
     window.show().map_err(|error| error.to_string())?;
     window.set_focus().map_err(|error| error.to_string())?;
     app.emit("island_visibility_changed", true)
         .map_err(|error| error.to_string())?;
-    let _ = crate::debug_log::append("[menu-bar] restored Meetly island");
+    let _ = crate::debug_log::append("[menu-bar] restored Meetly workspace expanded");
     Ok(())
 }
 
@@ -891,6 +898,13 @@ fn collapsed_window_size() -> tauri::LogicalSize<f64> {
     )
 }
 
+fn expanded_window_size() -> tauri::LogicalSize<f64> {
+    tauri::LogicalSize::new(
+        EXPANDED_WIDTH + OUTER_GUTTER * 2.0,
+        EXPANDED_HEIGHT + OUTER_GUTTER * 2.0,
+    )
+}
+
 fn start_click_through_guard(window: WebviewWindow) {
     tauri::async_runtime::spawn(async move {
         let mut last_ignore = false;
@@ -975,10 +989,11 @@ fn setup_macos_panel(window: &WebviewWindow) {
 #[cfg(test)]
 mod tests {
     use super::{
-        anchored_resize_coordinates, bottom_center_coordinates, monitor_contains_cursor,
-        resolve_voice_overlay_dimensions, CursorMonitorGeometry, IslandPresentationMode,
-        VoiceOverlayPlacement, VoiceOverlayPresentationMode, COMPACT_OVERLAY_HEIGHT,
-        COMPACT_OVERLAY_WIDTH,
+        anchored_resize_coordinates, bottom_center_coordinates, expanded_window_size,
+        monitor_contains_cursor, resolve_voice_overlay_dimensions, CursorMonitorGeometry,
+        IslandPresentationMode, VoiceOverlayPlacement, VoiceOverlayPresentationMode,
+        COMPACT_OVERLAY_HEIGHT, COMPACT_OVERLAY_WIDTH, EXPANDED_HEIGHT, EXPANDED_WIDTH,
+        OUTER_GUTTER,
     };
 
     #[test]
@@ -992,6 +1007,14 @@ mod tests {
             IslandPresentationMode::Expanded
         );
         assert!(IslandPresentationMode::from_height(600).is_expanded());
+    }
+
+    #[test]
+    fn menu_recovery_uses_expanded_workspace_dimensions() {
+        let size = expanded_window_size();
+
+        assert_eq!(size.width, EXPANDED_WIDTH + OUTER_GUTTER * 2.0);
+        assert_eq!(size.height, EXPANDED_HEIGHT + OUTER_GUTTER * 2.0);
     }
 
     #[test]
