@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
 import { buildAgentChatContext, buildAgentChatHistory, resolveAgentChatMessage } from "../src/app/agentChat.ts";
+import {
+  MAX_DOCUMENT_CHARS,
+  readDroppedContextFiles,
+  summarizeContextDocuments,
+} from "../src/app/contextDocuments.ts";
 import type { AgentChatTurn, ContextDocument, TranscriptSegment } from "../src/app/types.ts";
 
 assert.equal(resolveAgentChatMessage(), "需要帮助");
@@ -23,6 +28,20 @@ assert.match(context, /会议目标：确认负责人/);
 assert.match(context, /可用资料：合作范围\.md/);
 assert.match(context, /对方：预算什么时候确认？/);
 assert.match(context, /我：周五前。/);
+
+const longDocument = {
+  ...documents[0],
+  text: `${"a".repeat(MAX_DOCUMENT_CHARS - 1)}ZTAIL`,
+};
+const documentSummary = summarizeContextDocuments([longDocument]);
+assert.match(documentSummary, /Z/);
+assert.doesNotMatch(documentSummary, /TAIL/);
+
+const imported = await readDroppedContextFiles([
+  new File(["文".repeat(MAX_DOCUMENT_CHARS + 25)], "长资料.txt", { type: "text/plain" }),
+], "candidate");
+assert.equal(imported.rejected.length, 0);
+assert.equal(imported.documents[0]?.text.length, MAX_DOCUMENT_CHARS);
 
 const answered = (index: number): AgentChatTurn => ({
   id: `turn-${index}`,

@@ -29,6 +29,7 @@ export function createPiCoachTransport(): AgentTransport {
           mode,
           question: prompt.text,
           runId: prompt.wake.id,
+          documents: prompt.snapshot.documents,
         }),
         COACH_REQUEST_TIMEOUT_MS,
         () => callbacks?.onRetry?.(2, "request_timeout")

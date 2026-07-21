@@ -72,6 +72,7 @@ export function useAssistantAsk(
         question,
         selectedText: context || null,
         turns: previousTurns,
+        documents: ctx.contextDocumentsRef.current,
       }) ?? buildBrowserPreviewSuggestion(question);
 
       setChatTurns(ctx, ctx.agentChatTurnsRef.current.map((turn) =>

@@ -1,7 +1,7 @@
 import { blobToBase64, createId, safeInvoke } from "./platform";
 import type { ContextDocument, MeetingPerspective } from "./types";
 
-const MAX_DOCUMENT_CHARS = 28_000;
+export const MAX_DOCUMENT_CHARS = 10_000;
 const SUPPORTED_TEXT_TYPES = [
   "text/",
   "application/json",
@@ -59,7 +59,7 @@ export function summarizeContextDocuments(documents: ContextDocument[]) {
 
   return documents
     .map((document, index) => {
-      const preview = document.text.replace(/\s+/g, " ").trim().slice(0, 2_800);
+      const preview = document.text.replace(/\s+/g, " ").trim().slice(0, MAX_DOCUMENT_CHARS);
       return [
         `Document ${index + 1}`,
         `id: ${document.id}`,

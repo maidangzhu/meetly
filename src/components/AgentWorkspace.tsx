@@ -317,6 +317,7 @@ function AgentToolTraceList({ traces }: { traces: CoachToolTrace[] }) {
   return (
     <div className="agent-tool-list" aria-label="Agent tools">
       {traces.map((trace) => {
+        const ToolIcon = trace.name === "read_file" ? FileText : Globe2;
         const StatusIcon = trace.status === "running"
           ? CircleDot
           : trace.status === "error"
@@ -325,21 +326,21 @@ function AgentToolTraceList({ traces }: { traces: CoachToolTrace[] }) {
         return (
           <div key={trace.id} className={`agent-tool-row is-${trace.status}`}>
             <div className="agent-tool-summary">
-              <Globe2 />
+              <ToolIcon />
               <div>
                 <span>{trace.label}</span>
                 {trace.query && <p>{trace.query}</p>}
               </div>
               <span className="agent-tool-status">
                 <StatusIcon />
-                {toolTraceStatus(trace.status)}
+                {toolTraceStatus(trace)}
               </span>
             </div>
             {trace.content && (
               <details className="agent-tool-result">
                 <summary>
                   <ChevronDown />
-                  {trace.status === "error" ? "查看错误" : "查看来源"}
+                  {trace.status === "error" ? "查看错误" : trace.name === "read_file" ? "查看内容" : "查看来源"}
                 </summary>
                 <ToolResultContent content={trace.content} isError={trace.status === "error"} />
               </details>
@@ -372,9 +373,9 @@ function ToolResultContent({ content, isError }: { content: string; isError: boo
   );
 }
 
-function toolTraceStatus(status: CoachToolTrace["status"]) {
-  if (status === "running") return "搜索中";
-  if (status === "error") return "失败";
+function toolTraceStatus(trace: CoachToolTrace) {
+  if (trace.status === "running") return trace.name === "read_file" ? "读取中" : "搜索中";
+  if (trace.status === "error") return "失败";
   return "已完成";
 }
 

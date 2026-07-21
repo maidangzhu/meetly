@@ -1,3 +1,4 @@
+use super::agent_tool_loop::AgentContextDocument;
 use super::prompt_orchestrator::{build_system_prompt, build_user_message};
 use crate::audio::AudioState;
 use crate::domain::assistant::AssistantMode;
@@ -45,7 +46,7 @@ pub async fn ask_assistant(
     let system_prompt = build_system_prompt(mode);
     let user_message = build_user_message(&transcript);
 
-    run_completion(app, system_prompt, user_message).await
+    run_completion(app, system_prompt, user_message, Vec::new()).await
 }
 
 /// Same LLM call as `ask_assistant`, but the user message is a directly
@@ -74,7 +75,7 @@ pub async fn ask_assistant_with_question(
             .collect::<String>()
             .replace('\n', " ")
     ));
-    run_completion(app, system_prompt, question).await
+    run_completion(app, system_prompt, question, Vec::new()).await
 }
 
 /// Runs the same completion path as `ask_assistant_with_question`, but returns
@@ -87,6 +88,7 @@ pub async fn complete_assistant_with_question(
     mode: AssistantMode,
     question: String,
     run_id: Option<String>,
+    documents: Option<Vec<AgentContextDocument>>,
 ) -> Result<AssistantSuggestion, String> {
     if question.trim().is_empty() {
         return Err("Question is empty.".to_string());
@@ -103,7 +105,14 @@ pub async fn complete_assistant_with_question(
             .replace('\n', " ")
     ));
 
-    run_completion_return(app, run_id, system_prompt, question).await
+    run_completion_return(
+        app,
+        run_id,
+        system_prompt,
+        question,
+        documents.unwrap_or_default(),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -113,6 +122,7 @@ pub async fn complete_voice_ask(
     question: String,
     selected_text: Option<String>,
     turns: Vec<VoiceAskTurnInput>,
+    documents: Option<Vec<AgentContextDocument>>,
 ) -> Result<AssistantSuggestion, String> {
     let question = normalize_required(&question, MAX_VOICE_ASK_QUESTION_CHARS, "Question")?;
     let selected_text = selected_text
@@ -136,7 +146,14 @@ pub async fn complete_voice_ask(
         messages.len()
     ));
 
-    super::voice_agent::complete(&app, run_id, system_prompt, messages).await
+    super::voice_agent::complete(
+        &app,
+        run_id,
+        system_prompt,
+        messages,
+        documents.unwrap_or_default(),
+    )
+    .await
 }
 
 fn build_voice_ask_messages(
@@ -226,8 +243,9 @@ async fn run_completion(
     app: AppHandle,
     system_prompt: String,
     user_message: String,
+    documents: Vec<AgentContextDocument>,
 ) -> Result<(), String> {
-    match super::coach_agent::complete(&app, None, system_prompt, user_message).await {
+    match super::coach_agent::complete(&app, None, system_prompt, user_message, documents).await {
         Ok(suggestion) => {
             emit_done(&app, suggestion);
             Ok(())
@@ -244,8 +262,9 @@ async fn run_completion_return(
     trace_id: Option<String>,
     system_prompt: String,
     user_message: String,
+    documents: Vec<AgentContextDocument>,
 ) -> Result<AssistantSuggestion, String> {
-    super::coach_agent::complete(&app, trace_id, system_prompt, user_message).await
+    super::coach_agent::complete(&app, trace_id, system_prompt, user_message, documents).await
 }
 
 fn emit_done(app: &AppHandle, suggestion: AssistantSuggestion) {
