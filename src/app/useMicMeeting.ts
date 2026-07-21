@@ -99,6 +99,7 @@ export function useMicMeeting(
     ctx.setPrefetchStatus("idle");
     ctx.setAudioLevel(0);
     ctx.setState("idle");
+    await syncIslandMeetingActive(false);
     const endedAt = Date.now();
     const reportSession: InterviewSession | null = session.updateInterviewSession((current) => {
       const next = {
@@ -179,6 +180,7 @@ export function useMicMeeting(
       ctx.setTranscriptError(degradedMessages.length > 0 ? degradedMessages.join("；") : null);
       ctx.setAudioLevel(0.35);
       ctx.setState("listening");
+      await syncIslandMeetingActive(true);
       void windowActions.setPanel("assistant");
       agent.wakeSessionStart(nextSession.id, ctx.contextDocumentsRef.current.length > 0);
       debugLog(`[audio] native meeting capture started remote=${remote} system=${capture.system.ready} microphone=${capture.microphone.ready}`);
@@ -193,6 +195,7 @@ export function useMicMeeting(
       }));
       ctx.setAudioLevel(0);
       ctx.setState("error");
+      await syncIslandMeetingActive(false);
     }
   }, [agent, ctx, session, transcribeMicChunk, windowActions]);
 
@@ -229,6 +232,7 @@ export function useMicMeeting(
         const message = error instanceof Error ? error.message : String(error);
         debugLog(`[audio] cleanup stop system capture error message=${message}`);
       });
+      void syncIslandMeetingActive(false);
       if (ctx.hintExpiryTimerRef.current !== null) {
         window.clearTimeout(ctx.hintExpiryTimerRef.current);
       }
@@ -244,6 +248,15 @@ export function useMicMeeting(
     stopMicMeeting,
     toggleListening,
   };
+}
+
+async function syncIslandMeetingActive(active: boolean) {
+  try {
+    await safeInvoke("set_island_meeting_active", { active });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    debugLog(`[island] failed to sync meeting state active=${active} message=${message}`);
+  }
 }
 
 function resetSessionUi(ctx: MeetlyState, session: SessionActions) {

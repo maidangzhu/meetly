@@ -112,8 +112,32 @@ impl IslandPresentationMode {
     }
 }
 
+#[derive(Debug)]
+struct IslandWindowPlacement {
+    presentation: IslandPresentationMode,
+    meeting_active: bool,
+}
+
+impl Default for IslandWindowPlacement {
+    fn default() -> Self {
+        Self {
+            presentation: IslandPresentationMode::Collapsed,
+            meeting_active: false,
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct IslandWindowState {
+    placement: Mutex<IslandWindowPlacement>,
+}
+
 #[tauri::command]
-pub fn set_island_height(window: WebviewWindow, height: u32) -> Result<(), String> {
+pub fn set_island_height(
+    window: WebviewWindow,
+    state: State<IslandWindowState>,
+    height: u32,
+) -> Result<(), String> {
     let presentation = IslandPresentationMode::from_height(height);
     let width = if presentation.is_expanded() {
         EXPANDED_WIDTH
@@ -125,7 +149,69 @@ pub fn set_island_height(window: WebviewWindow, height: u32) -> Result<(), Strin
         height as f64 + OUTER_GUTTER * 2.0,
     );
     resize_preserving_position(&window, size).map_err(|error| error.to_string())?;
+    let mut placement = state
+        .placement
+        .lock()
+        .map_err(|error| format!("Failed to lock island window state: {error}"))?;
+    set_island_window_level(&window, presentation, placement.meeting_active)?;
+    placement.presentation = presentation;
     set_island_interactive(&window, presentation)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_island_meeting_active(
+    window: WebviewWindow,
+    state: State<IslandWindowState>,
+    active: bool,
+) -> Result<(), String> {
+    let mut placement = state
+        .placement
+        .lock()
+        .map_err(|error| format!("Failed to lock island window state: {error}"))?;
+    set_island_window_level(&window, placement.presentation, active)?;
+    placement.meeting_active = active;
+    Ok(())
+}
+
+fn should_float_island(presentation: IslandPresentationMode, meeting_active: bool) -> bool {
+    presentation == IslandPresentationMode::Collapsed || meeting_active
+}
+
+fn set_island_window_level(
+    window: &WebviewWindow,
+    presentation: IslandPresentationMode,
+    meeting_active: bool,
+) -> Result<(), String> {
+    let floating = should_float_island(presentation, meeting_active);
+
+    #[cfg(target_os = "macos")]
+    {
+        use tauri_nspanel::ManagerExt;
+
+        let panel = window
+            .app_handle()
+            .get_webview_panel("island")
+            .map_err(|error| format!("Failed to get island panel: {error:?}"))?;
+        const NS_NORMAL_WINDOW_LEVEL: i32 = 0;
+        const NS_FLOATING_WINDOW_LEVEL: i32 = 4;
+        panel.set_level(if floating {
+            NS_FLOATING_WINDOW_LEVEL
+        } else {
+            NS_NORMAL_WINDOW_LEVEL
+        });
+        panel.set_floating_panel(floating);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    window
+        .set_always_on_top(floating)
+        .map_err(|error| error.to_string())?;
+
+    let level = if floating { "floating" } else { "normal" };
+    let _ = crate::debug_log::append(&format!(
+        "[island] window level={level} presentation={presentation:?} meeting_active={meeting_active}"
+    ));
     Ok(())
 }
 
@@ -343,6 +429,18 @@ pub fn recover_island_window(app: &AppHandle) -> Result<(), String> {
     window
         .set_size(expanded_window_size())
         .map_err(|error| error.to_string())?;
+    let state = app.state::<IslandWindowState>();
+    let mut placement = state
+        .placement
+        .lock()
+        .map_err(|error| format!("Failed to lock island window state: {error}"))?;
+    set_island_window_level(
+        &window,
+        IslandPresentationMode::Expanded,
+        placement.meeting_active,
+    )?;
+    placement.presentation = IslandPresentationMode::Expanded;
+    drop(placement);
     position_top_center_at_cursor(&window)?;
     window
         .set_min_size(Some(tauri::LogicalSize::new(
@@ -964,9 +1062,9 @@ fn setup_macos_panel(window: &WebviewWindow) {
         .to_panel()
         .expect("failed to convert window to NSPanel");
 
-    #[allow(non_upper_case_globals)]
-    const NSFloatWindowLevel: i32 = 4;
-    panel.set_level(NSFloatWindowLevel);
+    const NS_FLOATING_WINDOW_LEVEL: i32 = 4;
+    panel.set_level(NS_FLOATING_WINDOW_LEVEL);
+    panel.set_floating_panel(true);
 
     #[allow(non_upper_case_globals)]
     const NSWindowStyleMaskNonActivatingPanel: i32 = 1 << 7;
@@ -990,10 +1088,10 @@ fn setup_macos_panel(window: &WebviewWindow) {
 mod tests {
     use super::{
         anchored_resize_coordinates, bottom_center_coordinates, expanded_window_size,
-        monitor_contains_cursor, resolve_voice_overlay_dimensions, CursorMonitorGeometry,
-        IslandPresentationMode, VoiceOverlayPlacement, VoiceOverlayPresentationMode,
-        COMPACT_OVERLAY_HEIGHT, COMPACT_OVERLAY_WIDTH, EXPANDED_HEIGHT, EXPANDED_WIDTH,
-        OUTER_GUTTER,
+        monitor_contains_cursor, resolve_voice_overlay_dimensions, should_float_island,
+        CursorMonitorGeometry, IslandPresentationMode, VoiceOverlayPlacement,
+        VoiceOverlayPresentationMode, COMPACT_OVERLAY_HEIGHT, COMPACT_OVERLAY_WIDTH,
+        EXPANDED_HEIGHT, EXPANDED_WIDTH, OUTER_GUTTER,
     };
 
     #[test]
@@ -1015,6 +1113,20 @@ mod tests {
 
         assert_eq!(size.width, EXPANDED_WIDTH + OUTER_GUTTER * 2.0);
         assert_eq!(size.height, EXPANDED_HEIGHT + OUTER_GUTTER * 2.0);
+    }
+
+    #[test]
+    fn island_floats_only_when_compact_or_meeting_is_active() {
+        assert!(should_float_island(
+            IslandPresentationMode::Collapsed,
+            false
+        ));
+        assert!(should_float_island(IslandPresentationMode::Collapsed, true));
+        assert!(!should_float_island(
+            IslandPresentationMode::Expanded,
+            false
+        ));
+        assert!(should_float_island(IslandPresentationMode::Expanded, true));
     }
 
     #[test]

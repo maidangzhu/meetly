@@ -21,6 +21,7 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .manage(audio::AudioState::default())
         .manage(dictation::DictationState::default())
+        .manage(window::IslandWindowState::default())
         .manage(window::VoiceOverlayState::default())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -34,6 +35,7 @@ pub fn run() {
     builder
         .invoke_handler(tauri::generate_handler![
             window::set_island_height,
+            window::set_island_meeting_active,
             window::set_island_visible,
             window::set_voice_overlay_presentation_mode,
             window::mark_voice_overlay_manually_positioned,
