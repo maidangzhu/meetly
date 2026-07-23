@@ -72,6 +72,8 @@ export function AgentWorkspace({
 }: AgentWorkspaceProps) {
   const [view, setView] = useState<WorkspaceView>(initialView);
   const [draft, setDraft] = useState("");
+  const isMeetingActive = ctx.state === "listening";
+  const activeView = isMeetingActive ? "agent" : view;
 
   const submit = () => {
     if (ctx.isAsking) return;
@@ -87,7 +89,10 @@ export function AgentWorkspace({
   };
 
   return (
-    <section className="meetly-workspace" aria-label="Meetly workspace">
+    <section
+      className={isMeetingActive ? "meetly-workspace is-meeting-active" : "meetly-workspace"}
+      aria-label="Meetly workspace"
+    >
       <header className="workspace-titlebar" onMouseDown={startIslandDrag}>
         <div className="workspace-window-controls" onMouseDown={(event) => event.stopPropagation()}>
           <button
@@ -117,20 +122,30 @@ export function AgentWorkspace({
         </div>
 
         <div className="workspace-title">
-          <h1>{NAV_ITEMS.find((item) => item.id === view)?.label}</h1>
-          {view === "agent" && <span>{ctx.state === "listening" ? "Listening" : "Ready"}</span>}
+          <h1>{NAV_ITEMS.find((item) => item.id === activeView)?.label}</h1>
+          {activeView === "agent" && <span>{isMeetingActive ? "Listening" : "Ready"}</span>}
         </div>
 
         <div className="workspace-header-actions" onMouseDown={(event) => event.stopPropagation()}>
+          {isMeetingActive && (
+            <button
+              className="workspace-header-button workspace-meeting-stop"
+              title="结束会议"
+              aria-label="结束会议"
+              onClick={toggleSession}
+            >
+              <MicOff />
+            </button>
+          )}
           <button
-            className="workspace-header-button"
+            className="workspace-header-button workspace-collapse-action"
             title="收起为横条"
             aria-label="收起为横条"
             onClick={closePanel}
           >
             <PanelTopClose />
           </button>
-          {view === "agent" && (
+          {!isMeetingActive && activeView === "agent" && (
             <>
               <button className="workspace-header-button" title="新对话" aria-label="新对话" onClick={clearConversation}>
                 <Plus />
@@ -150,8 +165,8 @@ export function AgentWorkspace({
             return (
               <button
                 key={item.id}
-                className={view === item.id ? "workspace-nav-item is-active" : "workspace-nav-item"}
-                aria-current={view === item.id ? "page" : undefined}
+                className={activeView === item.id ? "workspace-nav-item is-active" : "workspace-nav-item"}
+                aria-current={activeView === item.id ? "page" : undefined}
                 title={item.meta ? `${item.label} · ${item.meta}` : item.label}
                 onClick={() => setView(item.id)}
               >
@@ -178,7 +193,7 @@ export function AgentWorkspace({
       </aside>
 
       <div className="workspace-stage">
-        {view === "agent" ? (
+        {activeView === "agent" ? (
           <div className="agent-layout">
             <div className="agent-column">
               <AgentTimeline
@@ -212,7 +227,7 @@ export function AgentWorkspace({
             </div>
             <TranscriptRail ctx={ctx} />
           </div>
-        ) : view === "settings" ? (
+        ) : activeView === "settings" ? (
           <div className="workspace-settings">
             <SettingsContent
               compact
@@ -221,7 +236,7 @@ export function AgentWorkspace({
             />
           </div>
         ) : (
-          <WorkspaceLedger view={view} ctx={ctx} />
+          <WorkspaceLedger view={activeView} ctx={ctx} />
         )}
       </div>
     </section>
