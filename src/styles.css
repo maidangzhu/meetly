@@ -1175,33 +1175,6 @@ textarea:focus-visible {
   margin: 0 auto;
 }
 
-.ledger-summary {
-  border-right: 1px solid rgb(238 240 232 / 0.085);
-  padding: 26px 20px;
-}
-
-.ledger-summary > span {
-  color: #c47a50;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9px;
-}
-
-.ledger-summary strong {
-  display: block;
-  margin-top: 18px;
-  color: #e8e9e1;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 38px;
-  font-weight: 400;
-  line-height: 1;
-}
-
-.ledger-summary p {
-  margin: 8px 0 0;
-  color: rgb(238 240 232 / 0.36);
-  font-size: 11px;
-}
-
 .ledger-list {
   min-width: 0;
   min-height: 0;
@@ -1311,9 +1284,6 @@ textarea:focus-visible {
     grid-template-columns: 1fr;
   }
 
-  .ledger-summary {
-    display: none;
-  }
 }
 
 /* Paper workspace: quiet chrome, editorial type, and one restrained accent. */
@@ -2039,14 +2009,41 @@ textarea:focus-visible {
   background: #fafaf7;
 }
 
-.ledger-summary {
-  display: none;
-}
-
 .ledger-list {
   max-width: 760px;
   margin: 0 auto;
   padding: 20px 36px 36px;
+}
+
+.ledger-empty-state {
+  display: flex;
+  min-height: 280px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  text-align: center;
+}
+
+.ledger-empty-state > span {
+  margin-bottom: 12px;
+  color: #9a9d93;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+}
+
+.ledger-empty-state h2 {
+  margin: 0;
+  color: #383a33;
+  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.ledger-empty-state p {
+  margin: 8px 0 0;
+  color: #9a9d93;
+  font-size: 11px;
 }
 
 .ledger-row {

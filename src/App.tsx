@@ -54,96 +54,10 @@ export function App() {
   useTauriEvents(ctx, autoAssist, session, agent);
 
   useEffect(() => {
-    if (!panelPreview) return;
+    if (panelPreview !== "assistant" && panelPreview !== "settings" && panelPreview !== "perspective") return;
 
-    if (panelPreview === "assistant") {
-      const now = Date.now();
-      ctx.setState("listening");
-      ctx.setAudioLevel(0.42);
-      ctx.setOpenPanel("assistant");
-      ctx.setContextDocuments([
-        {
-          id: "preview-document",
-          name: "产品背景.md",
-          kind: "reference",
-          text: "Preview context",
-          size: 1280,
-          createdAt: now,
-        },
-      ]);
-      ctx.setAssistantSuggestion({
-        answer: "先确认对方真正关心的约束，再用一个具体案例说明你的判断过程。",
-        bullets: ["先给结论", "补充判断依据", "最后说明结果"],
-        clarifyingQuestion: null,
-      });
-      ctx.setTranscriptHistory([
-        {
-          id: "preview-transcript-1",
-          source: "system",
-          speaker: "interviewer",
-          text: "你会怎么判断一个功能现在是否值得做？",
-          startMs: 0,
-          endMs: 3200,
-        },
-        {
-          id: "preview-transcript-2",
-          source: "microphone",
-          speaker: "user",
-          text: "我会先看用户问题是否高频，再判断解决方案能不能形成稳定闭环。",
-          startMs: 3400,
-          endMs: 7600,
-        },
-      ]);
-      ctx.setPartialTranscript({
-        text: "如果信号还不够，我会先做更小的验证...",
-        startMs: 7800,
-        endMs: 9600,
-      });
-      ctx.setCoachMessages([
-        {
-          id: "preview-coach-1",
-          createdAt: now,
-          trigger: "question_detected",
-          text: "可以补一句你会用什么指标判断验证成功。",
-          contextPreview: "Preview coach context",
-          toolTraces: [],
-        },
-      ]);
-      const previewTurns = [
-        {
-          id: "preview-chat-1",
-          createdAt: now + 1,
-          question: "这段讨论里，最需要追问的是什么？",
-          suggestion: {
-            answer: "最需要确认的是验证成功的判断标准。现在只有方向，没有明确的观察窗口、负责人和退出条件。",
-            bullets: ["确认两周内看哪个指标", "指定唯一负责人", "提前约定无效时如何收缩范围"],
-            clarifyingQuestion: null,
-          },
-          error: null,
-          toolTraces: [
-            {
-              id: "preview-read-file-1",
-              name: "read_file",
-              label: "读取资料",
-              status: "completed" as const,
-              query: "产品背景.md",
-              content: "产品背景.md\n\n这份资料记录了产品目标、当前约束和本轮会议需要确认的决策。",
-              createdAt: now + 2,
-              completedAt: now + 3,
-            },
-          ],
-        },
-      ];
-      ctx.agentChatTurnsRef.current = previewTurns;
-      ctx.setAgentChatTurns(previewTurns);
-      void windowActions.resizeIsland(true);
-      return;
-    }
-
-    if (panelPreview === "settings" || panelPreview === "perspective") {
-      ctx.setOpenPanel(panelPreview);
-      void windowActions.resizeIsland(true);
-    }
+    ctx.setOpenPanel(panelPreview);
+    void windowActions.resizeIsland(true);
   }, []);
 
   useEffect(() => {

@@ -465,85 +465,96 @@ function TranscriptLine({ segment }: { segment: TranscriptSegment }) {
   );
 }
 
+type LedgerContent = {
+  kicker: string;
+  emptyTitle: string;
+  emptyDescription: string;
+  rows: Array<{
+    time: string;
+    title: string;
+    body: string;
+    status: string;
+    tone?: "live";
+  }>;
+};
+
 function WorkspaceLedger({ view, ctx }: { view: Exclude<WorkspaceView, "agent">; ctx: ReturnType<typeof useMeetlyState> }) {
   const content = getLedgerContent(view, ctx);
   return (
     <div className="workspace-ledger">
-      <div className="ledger-summary">
-        <span>{content.kicker}</span>
-        <strong>{content.total}</strong>
-        <p>{content.caption}</p>
-      </div>
       <div className="ledger-list">
-        {content.rows.map((row, index) => (
-          <article key={`${view}-${index}`} className="ledger-row">
-            <time>{row.time}</time>
-            <div>
-              <h2>{row.title}</h2>
-              <p>{row.body}</p>
-            </div>
-            <span className={row.tone === "live" ? "ledger-status is-live" : "ledger-status"}>{row.status}</span>
-          </article>
-        ))}
+        {content.rows.length === 0 ? (
+          <div className="ledger-empty-state">
+            <span>{content.kicker}</span>
+            <h2>{content.emptyTitle}</h2>
+            <p>{content.emptyDescription}</p>
+          </div>
+        ) : (
+          content.rows.map((row, index) => (
+            <article key={`${view}-${index}`} className="ledger-row">
+              <time>{row.time}</time>
+              <div>
+                <h2>{row.title}</h2>
+                <p>{row.body}</p>
+              </div>
+              <span className={row.tone === "live" ? "ledger-status is-live" : "ledger-status"}>{row.status}</span>
+            </article>
+          ))
+        )}
       </div>
     </div>
   );
 }
 
-function getLedgerContent(view: Exclude<WorkspaceView, "agent">, ctx: ReturnType<typeof useMeetlyState>) {
+function getLedgerContent(
+  view: Exclude<WorkspaceView, "agent">,
+  ctx: ReturnType<typeof useMeetlyState>
+): LedgerContent {
   if (view === "fn") {
     return {
       kicker: "VOICE ASK",
-      total: "03",
-      caption: "今日语音提问",
-      rows: [
-        { time: "14:32", title: "这个结论有什么漏洞？", body: "基于当前选中文本与屏幕上下文", status: "已回答" },
-        { time: "11:08", title: "把这段话解释得更直接", body: "连续对话 · 2 轮", status: "已回答" },
-        { time: "09:41", title: "下一步我应该问什么？", body: "会议上下文", status: "已回答" },
-      ],
+      emptyTitle: "暂无语音提问",
+      emptyDescription: "当前没有可显示的语音提问记录。",
+      rows: [],
     };
   }
   if (view === "dictation") {
     return {
       kicker: "DICTATION",
-      total: "18",
-      caption: "今日听写片段",
-      rows: [
-        { time: "15:04", title: "产品评审结论", body: "这一版先收敛 Agent 主线，转录作为辅助信息。", status: "已粘贴" },
-        { time: "13:17", title: "项目更新", body: "已经完成桌面端语音链路的端到端验证。", status: "已粘贴" },
-        { time: "10:26", title: "快速记录", body: "下周确认会议复盘页的信息结构。", status: "已粘贴" },
-      ],
+      emptyTitle: "暂无语音输入记录",
+      emptyDescription: "当前没有可显示的语音输入记录。",
+      rows: [],
     };
   }
   if (view === "meetings") {
-    const active = ctx.state === "listening";
+    const session = ctx.interviewSession;
     return {
       kicker: "MEETINGS",
-      total: String(active ? 13 : 12).padStart(2, "0"),
-      caption: "本月会议",
-      rows: [
+      emptyTitle: "暂无会议记录",
+      emptyDescription: "开始一次会话后，当前会议会显示在这里。",
+      rows: session ? [
         {
-          time: active ? "现在" : "今天",
-          title: ctx.meetingGoal || "产品方向讨论",
-          body: `${ctx.transcriptHistory.length} 条转录 · ${ctx.coachMessages.length + ctx.agentChatTurns.length} 条 Agent 记录`,
-          status: active ? "进行中" : "已结束",
-          tone: active ? "live" : undefined,
+          time: formatTime(session.startedAt),
+          title: session.goal || "未命名会议",
+          body: `${session.transcript.length} 条转录 · ${ctx.coachMessages.length + ctx.agentChatTurns.length} 条 Agent 记录`,
+          status: session.status === "listening" ? "进行中" : session.status === "error" ? "异常结束" : "已结束",
+          tone: session.status === "listening" ? "live" : undefined,
         },
-        { time: "周四", title: "Meetly 体验复盘", body: "42 分钟 · 6 个行动项", status: "已归档" },
-        { time: "周二", title: "桌面端语音链路评审", body: "31 分钟 · 3 个行动项", status: "已归档" },
-      ],
+      ] : [],
     };
   }
   return {
     kicker: "RUNTIME",
-    total: "24h",
-    caption: "本地运行窗口",
-    rows: [
-      { time: "刚刚", title: "Agent runtime", body: "用户输入通道优先级：100", status: "正常", tone: "live" },
-      { time: "2 分前", title: "Audio capture", body: ctx.state === "listening" ? "系统音频与麦克风采集中" : "当前没有活跃采集", status: ctx.state === "listening" ? "运行中" : "空闲" },
-      { time: "8 分前", title: "Voice overlay", body: "Fn 与 Fn + Space 使用独立浮层", status: "正常" },
-      { time: "今天", title: "Provider health", body: "STT 与 LLM 配置可用", status: "正常" },
-    ],
+    emptyTitle: "暂无运行日志",
+    emptyDescription: "当前没有可显示的运行日志。",
+    rows: ctx.transcriptError ? [
+      {
+        time: "当前",
+        title: "转录异常",
+        body: ctx.transcriptError,
+        status: "异常",
+      },
+    ] : [],
   };
 }
 
