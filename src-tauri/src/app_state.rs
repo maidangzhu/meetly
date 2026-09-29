@@ -6,9 +6,43 @@ use tauri_plugin_opener::OpenerExt;
 
 use crate::providers::{config::ProviderKind, secrets};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+const INDUSTRY_PRESET_IDS: &[&str] = &[
+    "cro",
+    "it",
+    "architecture",
+    "commerce",
+    "finance",
+    "healthcare",
+    "manufacturing",
+    "education",
+    "custom",
+];
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct StoredAppState {
+    #[serde(default)]
     onboarding_completed: bool,
+    #[serde(default)]
+    industry_preset_id: String,
+    #[serde(default)]
+    industry_custom_text: String,
+}
+
+impl Default for StoredAppState {
+    fn default() -> Self {
+        Self {
+            onboarding_completed: false,
+            industry_preset_id: String::new(),
+            industry_custom_text: String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListeningProfile {
+    pub preset_id: String,
+    pub custom_text: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -54,6 +88,33 @@ pub fn get_onboarding_status() -> Result<OnboardingStatus, String> {
         has_stt_key: secrets::has_api_key(ProviderKind::Stt).unwrap_or(false),
         has_llm_key: secrets::has_api_key(ProviderKind::Llm).unwrap_or(false),
     })
+}
+
+#[tauri::command]
+pub fn get_listening_profile() -> Result<ListeningProfile, String> {
+    let state = read_state().map_err(|error| error.to_string())?;
+    Ok(profile_from_state(&state))
+}
+
+#[tauri::command]
+pub fn save_listening_profile(preset_id: String, custom_text: String) -> Result<ListeningProfile, String> {
+    let preset_id = preset_id.trim().to_string();
+    if !preset_id.is_empty() && !INDUSTRY_PRESET_IDS.contains(&preset_id.as_str()) {
+        return Err("Unknown industry preset.".to_string());
+    }
+    let custom_text = custom_text.trim().chars().take(80).collect::<String>();
+    let mut state = read_state().map_err(|error| error.to_string())?;
+    state.industry_preset_id = preset_id;
+    state.industry_custom_text = custom_text;
+    write_state(&state).map_err(|error| error.to_string())?;
+    Ok(profile_from_state(&state))
+}
+
+fn profile_from_state(state: &StoredAppState) -> ListeningProfile {
+    ListeningProfile {
+        preset_id: state.industry_preset_id.clone(),
+        custom_text: state.industry_custom_text.clone(),
+    }
 }
 
 #[tauri::command]

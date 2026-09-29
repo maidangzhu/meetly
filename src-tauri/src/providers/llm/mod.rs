@@ -6,16 +6,9 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
-pub(crate) use openai_compatible::parse_suggestion;
 pub use openai_compatible::OpenAiCompatibleLlm;
 
-/// Structured suggestion returned by the assistant. Matches the schema in
-/// docs/TECHNICAL_DESIGN.md section 4.6, minus the `risk` field (dropped;
-/// see openspec/changes/add-llm-suggestions/design.md). `camelCase` on the
-/// wire in both directions: it's what the LLM is instructed to return (see
-/// `prompt_orchestrator::JSON_OUTPUT_CONTRACT`) and what gets emitted to the
-/// frontend as the `assistant_done` event payload, matching every other
-/// Tauri DTO in this project.
+/// Legacy structured suggestion still used by the provider connection probe.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssistantSuggestion {
@@ -30,6 +23,7 @@ pub struct AssistantSuggestion {
 #[serde(rename_all = "lowercase")]
 pub enum ChatRole {
     User,
+    #[allow(dead_code)]
     Assistant,
 }
 
@@ -55,13 +49,6 @@ impl ChatMessage {
     pub fn user(content: impl Into<String>) -> Self {
         Self {
             role: ChatRole::User,
-            content: content.into(),
-        }
-    }
-
-    pub fn assistant(content: impl Into<String>) -> Self {
-        Self {
-            role: ChatRole::Assistant,
             content: content.into(),
         }
     }

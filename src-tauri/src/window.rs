@@ -1,7 +1,6 @@
-use serde::{Deserialize, Serialize};
 use std::{sync::Mutex, time::Duration};
 use tauri::{
-    App, AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Position, State, WebviewUrl,
+    App, AppHandle, Emitter, Manager, PhysicalPosition, Position, State, WebviewUrl,
     WebviewWindow, WebviewWindowBuilder,
 };
 
@@ -11,65 +10,11 @@ const COLLAPSED_HEIGHT: f64 = 54.0;
 const EXPANDED_HEIGHT: f64 = 600.0;
 const OUTER_GUTTER: f64 = 10.0;
 const TOP_OFFSET: i32 = 54;
-const COMPACT_OVERLAY_WIDTH: f64 = 320.0;
-const COMPACT_OVERLAY_HEIGHT: f64 = 68.0;
-const EXPANDED_OVERLAY_WIDTH: f64 = 720.0;
-const EXPANDED_OVERLAY_HEIGHT: f64 = 680.0;
-const EXPANDED_OVERLAY_MIN_WIDTH: f64 = 560.0;
-const EXPANDED_OVERLAY_MIN_HEIGHT: f64 = 480.0;
-const EXPANDED_OVERLAY_MARGIN: f64 = 24.0;
-const DICTATION_BOTTOM_OFFSET: f64 = 56.0;
 const NS_WINDOW_STYLE_MASK_RESIZABLE: i32 = 1 << 3;
 const NS_WINDOW_STYLE_MASK_NON_ACTIVATING_PANEL: i32 = 1 << 7;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum VoiceOverlayPresentationMode {
-    Hidden,
-    #[default]
-    Compact,
-    Expanded,
-}
-
-#[derive(Debug)]
-struct VoiceOverlayPlacement {
-    cursor_monitor: Option<CursorMonitorGeometry>,
-    presentation: VoiceOverlayPresentationMode,
-    last_non_hidden: VoiceOverlayPresentationMode,
-    manually_positioned: bool,
-}
-
-impl Default for VoiceOverlayPlacement {
-    fn default() -> Self {
-        Self {
-            cursor_monitor: None,
-            presentation: VoiceOverlayPresentationMode::Hidden,
-            last_non_hidden: VoiceOverlayPresentationMode::Compact,
-            manually_positioned: false,
-        }
-    }
-}
-
-impl VoiceOverlayPlacement {
-    fn begin_run(&mut self, cursor_monitor: Option<CursorMonitorGeometry>) {
-        self.cursor_monitor = cursor_monitor;
-        self.manually_positioned = false;
-    }
-
-    fn set_presentation(&mut self, presentation: VoiceOverlayPresentationMode) {
-        self.presentation = presentation;
-        if presentation != VoiceOverlayPresentationMode::Hidden {
-            self.last_non_hidden = presentation;
-        }
-    }
-}
-
-#[derive(Default)]
-pub struct VoiceOverlayState {
-    placement: Mutex<VoiceOverlayPlacement>,
-}
-
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 struct CursorMonitorGeometry {
     source: &'static str,
     cursor_x: f64,
@@ -85,14 +30,6 @@ struct CursorMonitorGeometry {
     scale: f64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct VoiceOverlayDimensions {
-    width: f64,
-    height: f64,
-    min_width: Option<f64>,
-    min_height: Option<f64>,
-    margin: f64,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum IslandPresentationMode {
@@ -281,152 +218,6 @@ fn set_island_interactive(
     }
 }
 
-#[tauri::command]
-pub fn set_voice_overlay_presentation_mode(
-    app: AppHandle,
-    state: State<VoiceOverlayState>,
-    presentation_mode: VoiceOverlayPresentationMode,
-    width: Option<f64>,
-    height: Option<f64>,
-) -> Result<(), String> {
-    if presentation_mode == VoiceOverlayPresentationMode::Hidden
-        && crate::dictation::has_active_run(&app)
-    {
-        let _ = crate::debug_log::append("[voice-overlay] ignored hide while voice run is active");
-        return Ok(());
-    }
-    let Some(window) = app.get_webview_window("voice-overlay") else {
-        return Err("Voice overlay window not found".to_string());
-    };
-
-    let mut placement = state
-        .placement
-        .lock()
-        .map_err(|error| format!("Failed to lock voice overlay state: {error}"))?;
-
-    if presentation_mode != VoiceOverlayPresentationMode::Hidden {
-        if placement.cursor_monitor.is_none() {
-            placement.cursor_monitor = cursor_monitor_geometry(&window)?;
-        }
-        let dimensions = resolve_voice_overlay_dimensions(
-            presentation_mode,
-            width,
-            height,
-            placement.cursor_monitor,
-        );
-        configure_voice_overlay_window(&app, &window, presentation_mode, dimensions)?;
-        if placement.manually_positioned {
-            resize_preserving_position_with_margin(
-                &window,
-                tauri::LogicalSize::new(dimensions.width, dimensions.height),
-                dimensions.margin,
-            )
-            .map_err(|error| error.to_string())?;
-        } else {
-            position_overlay(
-                &window,
-                placement.cursor_monitor,
-                dimensions.width,
-                dimensions.height,
-                dimensions.margin,
-            )?;
-        }
-        placement.set_presentation(presentation_mode);
-        window.show().map_err(|error| error.to_string())?;
-        activate_voice_overlay_window(&app, &window, presentation_mode)?;
-        return Ok(());
-    }
-
-    placement.set_presentation(VoiceOverlayPresentationMode::Hidden);
-    deactivate_voice_overlay_window(&app);
-    window.hide().map_err(|error| error.to_string())?;
-    let _ = crate::debug_log::append("[voice-overlay] hidden");
-    Ok(())
-}
-
-#[tauri::command]
-pub fn mark_voice_overlay_manually_positioned(
-    app: AppHandle,
-    state: State<VoiceOverlayState>,
-) -> Result<(), String> {
-    let Some(window) = app.get_webview_window("voice-overlay") else {
-        return Err("Voice overlay window not found".to_string());
-    };
-    let destination_monitor = cursor_monitor_geometry(&window)?;
-    let position = window.outer_position().map_err(|error| error.to_string())?;
-    let mut placement = state
-        .placement
-        .lock()
-        .map_err(|error| format!("Failed to lock voice overlay state: {error}"))?;
-    placement.cursor_monitor = destination_monitor;
-    placement.manually_positioned = true;
-    let _ = crate::debug_log::append(&format!(
-        "[voice-overlay] manually positioned x={} y={}",
-        position.x, position.y
-    ));
-    Ok(())
-}
-
-pub(crate) fn prepare_dictation_overlay(app: &AppHandle) {
-    prepare_compact_overlay(app, "dictation");
-}
-
-pub(crate) fn prepare_voice_ask_overlay(app: &AppHandle) {
-    prepare_compact_overlay(app, "voice-ask");
-}
-
-fn prepare_compact_overlay(app: &AppHandle, kind: &str) {
-    let app_for_task = app.clone();
-    let kind = kind.to_string();
-    let task_kind = kind.clone();
-    if let Err(error) = app.run_on_main_thread(move || {
-        prepare_compact_overlay_on_main(&app_for_task, &task_kind);
-    }) {
-        let _ = crate::debug_log::append(&format!(
-            "[overlay] failed to schedule prepare kind={kind} error={error}"
-        ));
-    }
-}
-
-fn prepare_compact_overlay_on_main(app: &AppHandle, kind: &str) {
-    let Some(window) = app.get_webview_window("voice-overlay") else {
-        return;
-    };
-    let state = app.state::<VoiceOverlayState>();
-    let result = (|| {
-        let mut placement = state
-            .placement
-            .lock()
-            .map_err(|error| format!("Failed to lock voice overlay state: {error}"))?;
-        placement.begin_run(cursor_monitor_geometry(&window)?);
-        configure_voice_overlay_window(
-            app,
-            &window,
-            VoiceOverlayPresentationMode::Compact,
-            resolve_voice_overlay_dimensions(
-                VoiceOverlayPresentationMode::Compact,
-                None,
-                None,
-                placement.cursor_monitor,
-            ),
-        )?;
-        position_overlay(
-            &window,
-            placement.cursor_monitor,
-            COMPACT_OVERLAY_WIDTH,
-            COMPACT_OVERLAY_HEIGHT,
-            0.0,
-        )?;
-        placement.set_presentation(VoiceOverlayPresentationMode::Compact);
-        window.show().map_err(|error| error.to_string())
-    })();
-
-    if let Err(error) = result {
-        let _ = crate::debug_log::append(&format!(
-            "[overlay] prepare failed kind={kind} error={error}"
-        ));
-    }
-}
 
 #[tauri::command]
 pub fn set_island_visible(window: WebviewWindow, visible: bool) -> Result<(), String> {
@@ -584,17 +375,6 @@ pub fn setup_island_window(app: &mut App) -> tauri::Result<()> {
     position_top_center(&island)?;
     start_click_through_guard(island.clone());
 
-    if let Some(voice_overlay) = app.get_webview_window("voice-overlay") {
-        #[cfg(target_os = "macos")]
-        setup_macos_panel(&voice_overlay);
-
-        voice_overlay.set_size(tauri::LogicalSize::new(
-            COMPACT_OVERLAY_WIDTH,
-            COMPACT_OVERLAY_HEIGHT,
-        ))?;
-        voice_overlay.hide()?;
-        start_click_through_guard(voice_overlay);
-    }
 
     Ok(())
 }
@@ -649,181 +429,6 @@ fn position_top_center_at_cursor(window: &WebviewWindow) -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 
-fn resolve_voice_overlay_dimensions(
-    presentation: VoiceOverlayPresentationMode,
-    requested_width: Option<f64>,
-    requested_height: Option<f64>,
-    geometry: Option<CursorMonitorGeometry>,
-) -> VoiceOverlayDimensions {
-    if presentation != VoiceOverlayPresentationMode::Expanded {
-        return VoiceOverlayDimensions {
-            width: requested_width.unwrap_or(COMPACT_OVERLAY_WIDTH),
-            height: requested_height.unwrap_or(COMPACT_OVERLAY_HEIGHT),
-            min_width: None,
-            min_height: None,
-            margin: 0.0,
-        };
-    }
-
-    let (max_width, max_height) = geometry
-        .map(|geometry| {
-            let logical_work_width = geometry.work_width as f64 / geometry.scale;
-            let logical_work_height = geometry.work_height as f64 / geometry.scale;
-            (
-                (logical_work_width - EXPANDED_OVERLAY_MARGIN * 2.0).max(1.0),
-                (logical_work_height - EXPANDED_OVERLAY_MARGIN * 2.0).max(1.0),
-            )
-        })
-        .unwrap_or((EXPANDED_OVERLAY_WIDTH, EXPANDED_OVERLAY_HEIGHT));
-    let min_width = EXPANDED_OVERLAY_MIN_WIDTH.min(max_width);
-    let min_height = EXPANDED_OVERLAY_MIN_HEIGHT.min(max_height);
-    let width = requested_width
-        .unwrap_or(EXPANDED_OVERLAY_WIDTH)
-        .max(min_width)
-        .min(max_width);
-    let height = requested_height
-        .unwrap_or(EXPANDED_OVERLAY_HEIGHT)
-        .max(min_height)
-        .min(max_height);
-
-    VoiceOverlayDimensions {
-        width,
-        height,
-        min_width: Some(min_width),
-        min_height: Some(min_height),
-        margin: EXPANDED_OVERLAY_MARGIN,
-    }
-}
-
-fn configure_voice_overlay_window(
-    app: &AppHandle,
-    window: &WebviewWindow,
-    presentation: VoiceOverlayPresentationMode,
-    dimensions: VoiceOverlayDimensions,
-) -> Result<(), String> {
-    if presentation == VoiceOverlayPresentationMode::Expanded {
-        window
-            .set_min_size(Some(tauri::LogicalSize::new(
-                dimensions.min_width.unwrap_or(EXPANDED_OVERLAY_MIN_WIDTH),
-                dimensions.min_height.unwrap_or(EXPANDED_OVERLAY_MIN_HEIGHT),
-            )))
-            .map_err(|error| error.to_string())?;
-        window
-            .set_resizable(true)
-            .map_err(|error| error.to_string())?;
-        // tauri-nspanel replaces Tao's NSWindow class. Tao's macOS
-        // set_focusable implementation then panics while looking up its ivar.
-        #[cfg(not(target_os = "macos"))]
-        window
-            .set_focusable(true)
-            .map_err(|error| error.to_string())?;
-        return Ok(());
-    }
-
-    deactivate_voice_overlay_window(app);
-    window
-        .set_min_size(None::<tauri::Size>)
-        .map_err(|error| error.to_string())?;
-    window
-        .set_resizable(false)
-        .map_err(|error| error.to_string())?;
-    #[cfg(not(target_os = "macos"))]
-    window
-        .set_focusable(false)
-        .map_err(|error| error.to_string())?;
-    Ok(())
-}
-
-fn activate_voice_overlay_window(
-    app: &AppHandle,
-    window: &WebviewWindow,
-    presentation: VoiceOverlayPresentationMode,
-) -> Result<(), String> {
-    if presentation != VoiceOverlayPresentationMode::Expanded {
-        return Ok(());
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        use tauri_nspanel::ManagerExt;
-        if let Ok(panel) = app.get_webview_panel("voice-overlay") {
-            panel.set_becomes_key_only_if_needed(false);
-            panel.make_key_and_order_front(None);
-            return Ok(());
-        }
-    }
-
-    window.set_focus().map_err(|error| error.to_string())
-}
-
-fn deactivate_voice_overlay_window(app: &AppHandle) {
-    #[cfg(target_os = "macos")]
-    {
-        use tauri_nspanel::ManagerExt;
-        if let Ok(panel) = app.get_webview_panel("voice-overlay") {
-            panel.resign_key_window();
-            panel.set_becomes_key_only_if_needed(true);
-        }
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    let _ = app;
-}
-
-fn position_overlay(
-    window: &WebviewWindow,
-    geometry: Option<CursorMonitorGeometry>,
-    logical_width: f64,
-    logical_height: f64,
-    logical_margin: f64,
-) -> Result<(), String> {
-    let Some(geometry) = geometry else {
-        let _ = crate::debug_log::append("[overlay] no monitor geometry available");
-        return Ok(());
-    };
-
-    let window_width = (logical_width * geometry.scale).round() as i32;
-    let window_height = (logical_height * geometry.scale).round() as i32;
-    window
-        .set_size(PhysicalSize::new(
-            window_width.max(1) as u32,
-            window_height.max(1) as u32,
-        ))
-        .map_err(|error| error.to_string())?;
-    let margin = (logical_margin * geometry.scale).round() as i32;
-    let (x, y) = bottom_center_coordinates(
-        geometry.work_x + margin,
-        geometry.work_y + margin,
-        (geometry.work_width - margin * 2).max(window_width),
-        (geometry.work_height - margin * 2).max(window_height),
-        window_width,
-        window_height,
-        if logical_margin > 0.0 {
-            0
-        } else {
-            (DICTATION_BOTTOM_OFFSET * geometry.scale).round() as i32
-        },
-    );
-    window
-        .set_position(Position::Physical(PhysicalPosition::new(x, y)))
-        .map_err(|error| error.to_string())?;
-    let _ = crate::debug_log::append(&format!(
-        "[overlay] positioned source={} cursor=({:.0},{:.0}) monitor=({},{},{}x{}) scale={:.2} window={}x{} position=({},{})",
-        geometry.source,
-        geometry.cursor_x,
-        geometry.cursor_y,
-        geometry.monitor_x,
-        geometry.monitor_y,
-        geometry.monitor_width,
-        geometry.monitor_height,
-        geometry.scale,
-        window_width,
-        window_height,
-        x,
-        y
-    ));
-    Ok(())
-}
 
 fn cursor_monitor_geometry(
     window: &WebviewWindow,
@@ -968,20 +573,6 @@ fn monitor_contains_cursor(
         && cursor_y < (monitor_y + monitor_height) as f64
 }
 
-fn bottom_center_coordinates(
-    monitor_x: i32,
-    monitor_y: i32,
-    monitor_width: i32,
-    monitor_height: i32,
-    window_width: i32,
-    window_height: i32,
-    bottom_offset: i32,
-) -> (i32, i32) {
-    (
-        monitor_x + (monitor_width - window_width) / 2,
-        monitor_y + monitor_height - window_height - bottom_offset,
-    )
-}
 
 fn resize_preserving_position(
     window: &WebviewWindow,
@@ -1159,13 +750,10 @@ fn setup_macos_panel(window: &WebviewWindow) {
 #[cfg(test)]
 mod tests {
     use super::{
-        anchored_resize_coordinates, bottom_center_coordinates, expanded_window_size,
-        island_reopen_action, island_style_mask, monitor_contains_cursor,
-        resolve_voice_overlay_dimensions, should_float_island, CursorMonitorGeometry,
-        IslandPresentationMode, IslandReopenAction, VoiceOverlayPlacement,
-        VoiceOverlayPresentationMode, COMPACT_OVERLAY_HEIGHT, COMPACT_OVERLAY_WIDTH,
-        EXPANDED_HEIGHT, EXPANDED_WIDTH, NS_WINDOW_STYLE_MASK_NON_ACTIVATING_PANEL,
-        NS_WINDOW_STYLE_MASK_RESIZABLE, OUTER_GUTTER,
+        anchored_resize_coordinates, expanded_window_size, island_reopen_action,
+        island_style_mask, should_float_island,
+        IslandPresentationMode, IslandReopenAction, EXPANDED_HEIGHT, EXPANDED_WIDTH,
+        NS_WINDOW_STYLE_MASK_NON_ACTIVATING_PANEL, NS_WINDOW_STYLE_MASK_RESIZABLE, OUTER_GUTTER,
     };
 
     #[test]
@@ -1228,49 +816,6 @@ mod tests {
     }
 
     #[test]
-    fn dictation_overlay_is_centered_near_monitor_bottom() {
-        assert_eq!(
-            bottom_center_coordinates(
-                0,
-                0,
-                1512,
-                982,
-                COMPACT_OVERLAY_WIDTH as i32,
-                COMPACT_OVERLAY_HEIGHT as i32,
-                56
-            ),
-            (596, 858)
-        );
-    }
-
-    #[test]
-    fn dictation_overlay_respects_monitor_origin() {
-        assert_eq!(
-            bottom_center_coordinates(
-                -1920,
-                -120,
-                1920,
-                1080,
-                COMPACT_OVERLAY_WIDTH as i32,
-                COMPACT_OVERLAY_HEIGHT as i32,
-                56
-            ),
-            (-1120, 836)
-        );
-    }
-
-    #[test]
-    fn overlay_selects_monitor_containing_cursor() {
-        assert!(monitor_contains_cursor(
-            -1920, -120, 1920, 1080, -800.0, 400.0
-        ));
-        assert!(!monitor_contains_cursor(
-            -1920, -120, 1920, 1080, 300.0, 400.0
-        ));
-        assert!(monitor_contains_cursor(0, 0, 1512, 982, 300.0, 400.0));
-    }
-
-    #[test]
     fn manual_resize_preserves_top_and_horizontal_center() {
         assert_eq!(
             anchored_resize_coordinates((0, 0), (1512, 982), (700, 420), (480, 300), (480, 356),),
@@ -1294,113 +839,5 @@ mod tests {
             ),
             (-1920, -100)
         );
-    }
-
-    #[test]
-    fn presentation_tracks_last_non_hidden_mode() {
-        let mut placement = VoiceOverlayPlacement::default();
-        assert_eq!(placement.presentation, VoiceOverlayPresentationMode::Hidden);
-        assert_eq!(
-            placement.last_non_hidden,
-            VoiceOverlayPresentationMode::Compact
-        );
-
-        placement.set_presentation(VoiceOverlayPresentationMode::Expanded);
-        placement.set_presentation(VoiceOverlayPresentationMode::Hidden);
-
-        assert_eq!(placement.presentation, VoiceOverlayPresentationMode::Hidden);
-        assert_eq!(
-            placement.last_non_hidden,
-            VoiceOverlayPresentationMode::Expanded
-        );
-        assert_eq!(
-            serde_json::to_value(VoiceOverlayPresentationMode::Expanded).unwrap(),
-            "expanded"
-        );
-    }
-
-    #[test]
-    fn new_voice_run_forgets_the_previous_drag_position() {
-        let mut placement = VoiceOverlayPlacement {
-            manually_positioned: true,
-            ..VoiceOverlayPlacement::default()
-        };
-        let monitor = CursorMonitorGeometry {
-            source: "test",
-            cursor_x: -800.0,
-            cursor_y: 100.0,
-            monitor_x: -1920,
-            monitor_y: -120,
-            monitor_width: 1920,
-            monitor_height: 1080,
-            work_x: -1920,
-            work_y: -120,
-            work_width: 1920,
-            work_height: 1055,
-            scale: 1.0,
-        };
-
-        placement.begin_run(Some(monitor));
-
-        assert!(!placement.manually_positioned);
-        assert_eq!(placement.cursor_monitor.unwrap().monitor_x, -1920);
-    }
-
-    #[test]
-    fn expanded_dimensions_use_target_and_minimum_on_normal_monitor() {
-        let geometry = CursorMonitorGeometry {
-            source: "test",
-            cursor_x: 100.0,
-            cursor_y: 100.0,
-            monitor_x: 0,
-            monitor_y: 0,
-            monitor_width: 3024,
-            monitor_height: 1964,
-            work_x: 0,
-            work_y: 48,
-            work_width: 3024,
-            work_height: 1880,
-            scale: 2.0,
-        };
-        let dimensions = resolve_voice_overlay_dimensions(
-            VoiceOverlayPresentationMode::Expanded,
-            None,
-            None,
-            Some(geometry),
-        );
-
-        assert_eq!(dimensions.width, 720.0);
-        assert_eq!(dimensions.height, 680.0);
-        assert_eq!(dimensions.min_width, Some(560.0));
-        assert_eq!(dimensions.min_height, Some(480.0));
-    }
-
-    #[test]
-    fn expanded_dimensions_shrink_below_minimum_only_for_small_work_area() {
-        let geometry = CursorMonitorGeometry {
-            source: "test",
-            cursor_x: -800.0,
-            cursor_y: 100.0,
-            monitor_x: -1100,
-            monitor_y: 0,
-            monitor_width: 1100,
-            monitor_height: 900,
-            work_x: -1100,
-            work_y: 0,
-            work_width: 1100,
-            work_height: 900,
-            scale: 2.0,
-        };
-        let dimensions = resolve_voice_overlay_dimensions(
-            VoiceOverlayPresentationMode::Expanded,
-            None,
-            None,
-            Some(geometry),
-        );
-
-        assert_eq!(dimensions.width, 502.0);
-        assert_eq!(dimensions.height, 402.0);
-        assert_eq!(dimensions.min_width, Some(502.0));
-        assert_eq!(dimensions.min_height, Some(402.0));
     }
 }

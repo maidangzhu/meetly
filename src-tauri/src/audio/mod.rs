@@ -115,15 +115,12 @@ impl CaptureChannel {
 
     fn speaker(self) -> &'static str {
         match self {
-            Self::System => "interviewer",
-            Self::Microphone => "user",
+            Self::System | Self::Microphone => "unknown",
         }
     }
 }
 
 /// Returns transcript segments from the last `window_ms` milliseconds.
-/// Called directly (not through Tauri IPC) by other Rust modules, e.g. the
-/// future assistant service building an Ask prompt.
 pub fn recent_transcript(state: &AudioState, window_ms: u64) -> Vec<TranscriptSegmentDto> {
     let Ok(buffer) = state.transcript.lock() else {
         return Vec::new();
@@ -133,14 +130,6 @@ pub fn recent_transcript(state: &AudioState, window_ms: u64) -> Vec<TranscriptSe
         .into_iter()
         .map(Into::into)
         .collect()
-}
-
-pub fn is_listening(state: &AudioState) -> bool {
-    state
-        .runtime
-        .lock()
-        .map(|runtime| runtime.task.is_some())
-        .unwrap_or(false)
 }
 
 /// Public DTO alias so callers outside this module don't need to reach into

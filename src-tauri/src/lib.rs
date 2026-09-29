@@ -1,10 +1,7 @@
 mod app;
 mod app_state;
 mod audio;
-mod coach_event_log;
 mod debug_log;
-mod dictation;
-mod domain;
 mod menu_bar;
 mod providers;
 mod window;
@@ -20,11 +17,7 @@ pub fn run() {
 
     let builder = tauri::Builder::default()
         .manage(audio::AudioState::default())
-        .manage(dictation::DictationState::default())
         .manage(window::IslandWindowState::default())
-        .manage(window::VoiceOverlayState::default())
-        .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build());
@@ -37,12 +30,12 @@ pub fn run() {
             window::set_island_height,
             window::set_island_meeting_active,
             window::set_island_visible,
-            window::set_voice_overlay_presentation_mode,
-            window::mark_voice_overlay_manually_positioned,
             window::set_stealth,
             window::open_settings_window,
             app_state::get_onboarding_status,
             app_state::complete_onboarding,
+            app_state::get_listening_profile,
+            app_state::save_listening_profile,
             app_state::open_external_url,
             app_state::quit_app,
             audio::get_audio_status,
@@ -51,19 +44,7 @@ pub fn run() {
             audio::start_meeting_capture,
             audio::stop_listening,
             audio::stop_meeting_capture,
-            coach_event_log::append_coach_event_log,
             debug_log::append_debug_log,
-            dictation::cancel_voice_ask_run,
-            dictation::cancel_dictation_run,
-            dictation::finish_voice_ask_run,
-            dictation::finish_dictation_run,
-            dictation::get_dictation_status,
-            dictation::get_dictation_settings,
-            dictation::paste_dictation_text,
-            dictation::polish_dictation,
-            dictation::request_dictation_accessibility,
-            dictation::save_dictation_settings,
-            dictation::test_dictation_paste,
             providers::commands::save_provider_config,
             providers::commands::get_provider_config,
             providers::commands::list_provider_options,
@@ -71,17 +52,7 @@ pub fn run() {
             providers::commands::test_stt_config,
             providers::commands::test_llm_config,
             providers::commands::transcribe_audio,
-            providers::commands::get_llm_runtime_config_for_pi,
-            providers::web::get_web_search_config,
-            providers::web::save_web_search_config,
-            providers::web::test_web_search_config,
-            providers::web::web_fetch,
-            app::document_service::extract_pdf_text,
-            app::assistant_service::ask_assistant,
-            app::assistant_service::ask_assistant_with_question,
-            app::assistant_service::complete_assistant_with_question,
-            app::assistant_service::complete_voice_ask,
-            app::report_service::generate_interview_report,
+            app::term_service::explain_transcript_terms,
         ])
         .setup(|app| {
             let _ = debug_log::append(&format!(
@@ -92,7 +63,6 @@ pub fn run() {
             menu_bar::setup(app)?;
             window::setup_island_window(app)?;
             providers::dev_env::seed_from_dotenv_if_missing(app.handle());
-            dictation::initialize(app.handle());
             Ok(())
         })
         .build(tauri::generate_context!())

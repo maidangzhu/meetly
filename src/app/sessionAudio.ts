@@ -1,8 +1,7 @@
-import type { AudioSource, SessionKind } from "./types";
+export type SessionKind = "remote" | "in_person";
+export type AudioSource = "system" | "microphone";
 
-export function resolveAudioSourceForSessionChange(
+export const resolveAudioSourceForSessionChange = (
   kind: SessionKind,
-  _currentSource: AudioSource
-): AudioSource {
-  return kind === "remote" ? "system" : "microphone";
-}
+  _currentSource: AudioSource,
+): AudioSource => (kind === "remote" ? "system" : "microphone");

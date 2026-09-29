@@ -7,31 +7,18 @@
     "dev": "vite --host 127.0.0.1 --port 1420",
     "build": "tsc && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test:flow": "node scripts/simulate-interview-flow.mjs",
-    "test:wake": "tsx scripts/replay-coach-wake-policy.ts",
-    "test:coach-log": "tsx scripts/replay-latest-coach-log.ts",
-    "test:coach-journal": "tsx scripts/test-coach-journal.ts",
-    "test:agent-runtime": "tsx scripts/test-agent-runtime-races.ts",
-    "test:agent-chat": "tsx scripts/test-agent-chat.ts",
-    "test:dictation": "tsx scripts/test-dictation-state.ts",
-    "test:microphone-clip": "tsx scripts/test-microphone-clip.ts",
+    "test:terms": "tsx scripts/test-term-session.ts",
     "test:session-audio": "tsx scripts/test-session-audio.ts",
-    "test:voice-ask": "tsx scripts/test-voice-ask-state.ts",
-    "test:voice-overlay": "tsx scripts/test-voice-overlay-presentation.ts",
     "package:macos:test": "CI=true tauri build --bundles dmg --no-sign --config src-tauri/tauri.test.conf.json && bash scripts/verify-macos-test-bundle.sh",
     "tauri": "tauri"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "0.80.3",
-    "@earendil-works/pi-ai": "0.80.3",
     "@tauri-apps/api": "^2.9.1",
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "^2.10.1",
     "lucide-react": "^0.539.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1"
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.1",

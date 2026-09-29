@@ -43,16 +43,16 @@ export function OnboardingPanel({
         </div>
         <div className="mt-6 max-w-[430px]">
           <p className="section-label">Welcome to Meetly</p>
-          <h2 className="m-0 mt-2 text-xl font-semibold leading-tight text-white/92">一个始终在手边的语音入口。</h2>
+          <h2 className="m-0 mt-2 text-xl font-semibold leading-tight text-white/92">听会时看懂行业术语。</h2>
           <p className="mt-3 mb-0 text-sm leading-relaxed text-white/52">
-            Meetly 将语音输入、实时上下文与主动式 AI 放在同一个本地桌面入口里。
+            先选行业，再听实时转写。出现不熟的缩写或行话时，用大字解释。没有术语就保持安静。
           </p>
         </div>
 
         <div className="mt-6 border-t border-white/[0.07] text-sm text-white/58">
-          <WelcomeLine>顶部浮岛保持安静，只在需要时展开。</WelcomeLine>
-          <WelcomeLine>语音输入、Ask 与持续会话彼此独立。</WelcomeLine>
-          <WelcomeLine>模型和数据保留在你的本地配置边界内。</WelcomeLine>
+          <WelcomeLine>行业可以选 CRO / 临床研究、IT、建筑、电商，也可以自己填。</WelcomeLine>
+          <WelcomeLine>同一个缩写按当前行业解释。临床研究里的 CTA 是临床试验助理。</WelcomeLine>
+          <WelcomeLine>转写和语言模型的密钥留在本机。</WelcomeLine>
         </div>
 
         <div className="mt-auto flex justify-end pt-6">
@@ -79,7 +79,7 @@ export function OnboardingPanel({
         <SetupStep
           icon={<Mic />}
           title="打开麦克风权限"
-          description="Meetly 当前主路径通过麦克风持续监听面试/对话。首次点击开始时，macOS 会弹出麦克风权限。"
+          description="开始聆听时使用麦克风。远程会议还会采集系统播放的声音。首次点击开始时，macOS 会弹出麦克风权限。"
           done={false}
           action={
             <button

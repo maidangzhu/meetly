@@ -2,20 +2,10 @@ use super::config::{
     provider_descriptors, DiagnosticResult, ProviderConfig, ProviderDescriptor, ProviderId,
     ProviderKind,
 };
-use super::credentials;
 use super::stt::BatchAsrRequest;
 use super::{secrets, storage};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use tauri::AppHandle;
-
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LlmRuntimeConfig {
-    pub base_url: String,
-    pub model: String,
-    pub api_key: String,
-    pub web_search_enabled: bool,
-}
 
 #[tauri::command]
 pub async fn save_provider_config(
@@ -81,26 +71,6 @@ pub async fn test_stt_config(app: AppHandle) -> Result<DiagnosticResult, String>
 #[tauri::command]
 pub async fn test_llm_config(app: AppHandle) -> Result<DiagnosticResult, String> {
     Ok(crate::providers::llm::test_connection(&app).await)
-}
-
-/// Development runtime config for the TS PI observer.
-///
-/// PI is an npm runtime, so the observer needs the same model coordinates as
-/// the Rust assistant provider. This command deliberately contains no agent
-/// behavior; it only bridges saved local dev config into the WebView runtime.
-#[tauri::command]
-pub async fn get_llm_runtime_config_for_pi(app: AppHandle) -> Result<LlmRuntimeConfig, String> {
-    let credentials =
-        credentials::resolve(&app, ProviderKind::Llm).map_err(|error| error.to_string())?;
-
-    Ok(LlmRuntimeConfig {
-        base_url: credentials.base_url,
-        model: credentials.model,
-        api_key: credentials.api_key,
-        web_search_enabled: super::web::get_config(&app)
-            .map(|config| config.enabled)
-            .unwrap_or(false),
-    })
 }
 
 /// Transcribes a browser-recorded microphone clip. `audio_base64` is a data

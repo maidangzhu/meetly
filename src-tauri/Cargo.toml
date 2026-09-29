@@ -1,7 +1,7 @@
 [package]
 name = "meetly"
 version = "0.1.9"
-description = "A local-first meeting assistant MVP."
+description = "A local-first industry term explainer for live transcripts."
 authors = ["Meetly"]
 edition = "2021"
 
@@ -20,14 +20,10 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 dirs = "5"
 dotenvy = "0.15"
 futures-util = "0.3"
-handy-keys = "0.3.0"
 hound = "3.5"
-pdf-extract = "0.12"
 reqwest = { version = "0.12", features = ["json", "multipart", "stream"] }
 ringbuf = "0.4"
 tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
-tauri-plugin-clipboard-manager = "2.3.2"
-tauri-plugin-global-shortcut = "2.3.1"
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -39,11 +35,7 @@ tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-accessibility = "0.2"
-accessibility-sys = "0.2"
 cidre = "0.11"
-core-foundation = "0.10"
-core-graphics = "0.25"
 cpal = "0.15.2"
 objc2 = "0.6"
 objc2-app-kit = "0.3.2"

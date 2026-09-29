@@ -1,13 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
+import { IndustryPicker } from "./components/IndustryPicker";
+import { EMPTY_INDUSTRY_CHOICE, type IndustryChoice } from "./app/industry";
 import { OnboardingPanel, type OnboardingStatus } from "./settings/OnboardingPanel";
 import { UpdateSection } from "./settings/UpdateSection";
-import type {
-  DictationOutputResult,
-  DictationSettings,
-  DictationStatus,
-} from "./app/dictation/types";
-import { DEFAULT_DICTATION_SETTINGS } from "./app/dictation/types";
 
 type ProviderKind = "stt" | "llm";
 type ProviderId = "openai_compatible" | "xiaomi_mimo";
@@ -254,137 +250,6 @@ export function ProviderSection({
   );
 }
 
-function WebSearchSection() {
-  const [settings, setSettings] = useState<WebSearchSettings>({
-    enabled: false,
-    provider: "exa",
-    hasApiKey: false,
-  });
-  const [apiKey, setApiKey] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-  const [isTesting, setIsTesting] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [testResult, setTestResult] = useState<DiagnosticResult | null>(null);
-
-  const load = useCallback(async () => {
-    try {
-      setSettings(await invoke<WebSearchSettings>("get_web_search_config"));
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error));
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const save = async () => {
-    setIsSaving(true);
-    setMessage(null);
-    setTestResult(null);
-    try {
-      const next = await invoke<WebSearchSettings>("save_web_search_config", {
-        enabled: settings.enabled,
-        provider: settings.provider,
-        apiKey,
-      });
-      setSettings(next);
-      setApiKey("");
-      setMessage("Web search settings saved.");
-    } catch (error) {
-      setMessage(`Failed to save: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const test = async () => {
-    setIsTesting(true);
-    setTestResult(null);
-    try {
-      setTestResult(await invoke<DiagnosticResult>("test_web_search_config"));
-    } catch (error) {
-      setTestResult({
-        success: false,
-        message: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      setIsTesting(false);
-    }
-  };
-
-  return (
-    <section className="settings-section">
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <div>
-          <h2 className="section-title">Web search</h2>
-          <p className="mt-1 mb-0 max-w-[560px] text-xs leading-relaxed text-white/44">
-            默认关闭。开启后，Coach 与 Fn Agent 可分别按需搜索公开网页。
-          </p>
-        </div>
-        <span className={`mt-0.5 text-[11px] ${settings.enabled ? "text-[#b9c6cc]" : "text-white/32"}`}>
-          {settings.enabled ? "已开启" : "默认关闭"}
-        </span>
-      </div>
-
-      <label className="settings-row mb-3 justify-between text-sm">
-        <span>
-          <span className="block text-[13px] font-medium">Exa web search</span>
-          <span className="block text-xs text-white/45">关闭后，两个 Agent 都不会向 Exa 发送搜索请求。</span>
-        </span>
-        <input
-          className="ui-switch"
-          type="checkbox"
-          checked={settings.enabled}
-          onChange={(event) => setSettings((current) => ({ ...current, enabled: event.target.checked }))}
-        />
-      </label>
-
-      <div className="mb-3">
-        <label>
-          <span className={LABEL}>Search provider</span>
-          <select className={FIELD} value={settings.provider} disabled>
-            <option value="exa">Exa</option>
-          </select>
-        </label>
-      </div>
-
-      <div className="mb-4">
-        <label className={LABEL}>
-          Exa API Key {settings.hasApiKey && <span className="text-white/40">(saved — leave blank to keep)</span>}
-        </label>
-        <input
-          className={FIELD}
-          type="password"
-          value={apiKey}
-          onChange={(event) => setApiKey(event.target.value)}
-          placeholder={settings.hasApiKey ? "••••••••" : "exa-..."}
-        />
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <button className={PRIMARY_BUTTON} disabled={isSaving} onClick={() => void save()}>
-          {isSaving ? "Saving..." : "Save search"}
-        </button>
-        <button
-          className={SECONDARY_BUTTON}
-          disabled={isTesting || !settings.hasApiKey}
-          onClick={() => void test()}
-        >
-          {isTesting ? "Testing..." : "Test Exa"}
-        </button>
-      </div>
-
-      {message && <p className="mt-2 mb-0 text-xs text-white/60">{message}</p>}
-      {testResult && (
-        <p className={`mt-2 mb-0 text-xs ${testResult.success ? "text-[#b9c6cc]" : "text-[#ff5c70]"}`}>
-          {testResult.message}
-        </p>
-      )}
-    </section>
-  );
-}
-
 export function DiagnosticsSection() {
   const [audioStatus, setAudioStatus] = useState<AudioStatus | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -459,201 +324,6 @@ export function DiagnosticsSection() {
   );
 }
 
-function DictationSection() {
-  const [settings, setSettings] = useState<DictationSettings>(DEFAULT_DICTATION_SETTINGS);
-  const [status, setStatus] = useState<DictationStatus | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isTesting, setIsTesting] = useState(false);
-
-  const load = useCallback(async () => {
-    try {
-      const next = await invoke<DictationStatus>("get_dictation_status");
-      setStatus(next);
-      setSettings(next.settings);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error));
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const save = async () => {
-    setIsSaving(true);
-    setMessage(null);
-    try {
-      const next = await invoke<DictationStatus>("save_dictation_settings", { settings });
-      setStatus(next);
-      setSettings(next.settings);
-      setMessage("Voice dictation settings saved.");
-    } catch (error) {
-      setMessage(`Failed to save: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const testPaste = async () => {
-    setIsTesting(true);
-    setMessage(null);
-    try {
-      const result = await invoke<DictationOutputResult>("test_dictation_paste");
-      setMessage(result.outcome === "pasted" ? "Paste test completed." : result.message);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error));
-    } finally {
-      setIsTesting(false);
-    }
-  };
-
-  return (
-    <section className="settings-section">
-      <h2 className="section-title">Voice shortcuts</h2>
-      <p className="mt-1 mb-4 text-xs leading-relaxed text-white/44">
-        控制语音输入、自动粘贴与模型整理。
-      </p>
-
-      <label className="settings-row mb-3 justify-between text-sm">
-        <span>
-          <span className="block text-[13px] font-medium">Enable voice shortcuts</span>
-          <span className="block text-xs text-white/45">Dictation and Voice Ask run independently from Meeting and Coach.</span>
-        </span>
-        <input
-          className="ui-switch"
-          type="checkbox"
-          checked={settings.enabled}
-          onChange={(event) => setSettings((current) => ({ ...current, enabled: event.target.checked }))}
-        />
-      </label>
-
-      <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label>
-          <span className={LABEL}>Primary shortcut</span>
-          <input
-            className={FIELD}
-            value={settings.shortcut}
-            onChange={(event) => setSettings((current) => ({ ...current, shortcut: event.target.value }))}
-            placeholder="Fn+Space"
-          />
-        </label>
-        <label>
-          <span className={LABEL}>Fallback shortcut</span>
-          <input
-            className={FIELD}
-            value={settings.fallbackShortcut}
-            onChange={(event) => setSettings((current) => ({ ...current, fallbackShortcut: event.target.value }))}
-            placeholder="Alt+Space"
-          />
-        </label>
-      </div>
-
-      <div className="mb-4">
-        <DictationToggle
-          label="AI polish"
-          description="Remove filler and fix punctuation without adding new ideas."
-          checked={settings.aiPolishEnabled}
-          onChange={(checked) => setSettings((current) => ({ ...current, aiPolishEnabled: checked }))}
-        />
-        <DictationToggle
-          label="Auto paste"
-          description="Paste into the app that was active when dictation started."
-          checked={settings.autoPasteEnabled}
-          onChange={(checked) => setSettings((current) => ({ ...current, autoPasteEnabled: checked }))}
-        />
-        <DictationToggle
-          label="Keep result in clipboard"
-          description="Leaves the final text available if automatic paste fails."
-          checked={settings.keepResultInClipboard}
-          onChange={(checked) => setSettings((current) => ({ ...current, keepResultInClipboard: checked }))}
-        />
-      </div>
-
-      <div className="mb-3">
-        <DiagnosticItem
-          label="Microphone access"
-          value={formatMicrophonePermission(status?.microphonePermission)}
-          state={status?.microphonePermission === "authorized" ? "ok" : "pending"}
-        />
-        <DiagnosticItem
-          label="Keyboard access"
-          value={status?.accessibilityGranted ? "Granted" : "Required for Fn and auto paste"}
-          state={status?.accessibilityGranted ? "ok" : "pending"}
-        />
-        <DiagnosticItem
-          label="Shortcut backend"
-          value={status?.shortcutBackend ?? "Checking..."}
-          state={status?.shortcutBackend && status.shortcutBackend !== "unavailable" ? "ok" : "pending"}
-        />
-      </div>
-
-      {status?.shortcutError && <p className="mb-3 text-xs text-[#ff9ba8]">{status.shortcutError}</p>}
-
-      <div className="flex flex-wrap items-center gap-2">
-        <button className={PRIMARY_BUTTON} disabled={isSaving} onClick={() => void save()}>
-          {isSaving ? "Saving..." : "Save dictation"}
-        </button>
-        {!status?.accessibilityGranted && (
-          <button
-            className={SECONDARY_BUTTON}
-            onClick={() =>
-              void invoke("request_dictation_accessibility")
-                .then(load)
-                .catch((error) => setMessage(error instanceof Error ? error.message : String(error)))
-            }
-          >
-            Open Keyboard Access
-          </button>
-        )}
-        <button className={SECONDARY_BUTTON} disabled={isTesting} onClick={() => void testPaste()}>
-          {isTesting ? "Testing..." : "Test paste"}
-        </button>
-      </div>
-      {message && <p className="mt-2 mb-0 text-xs text-white/60">{message}</p>}
-    </section>
-  );
-}
-
-function formatMicrophonePermission(permission: DictationStatus["microphonePermission"] | undefined) {
-  switch (permission) {
-    case "authorized":
-      return "Granted";
-    case "not_determined":
-      return "Will ask on first recording";
-    case "denied":
-      return "Denied in System Settings";
-    case "restricted":
-      return "Restricted by macOS";
-    case "unknown":
-      return "Unknown";
-    default:
-      return "Checking...";
-  }
-}
-
-function DictationToggle({
-  checked,
-  description,
-  label,
-  onChange,
-}: {
-  checked: boolean;
-  description: string;
-  label: string;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <label className="settings-row justify-between">
-      <span>
-        <span className="block text-[13px] font-medium">{label}</span>
-        <span className="block text-xs text-white/45">{description}</span>
-      </span>
-      <input className="ui-switch" type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-    </label>
-  );
-}
-
 function DiagnosticItem({
   label,
   value,
@@ -671,6 +341,46 @@ function DiagnosticItem({
       <p className="m-0 min-w-[150px] text-[12px] font-medium text-white/62">{label}</p>
       <span className="min-w-0 flex-1 truncate text-right text-[12px] leading-normal text-white/46">{value}</span>
     </div>
+  );
+}
+
+function IndustrySection() {
+  const [choice, setChoice] = useState<IndustryChoice>(EMPTY_INDUSTRY_CHOICE);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    void invoke<IndustryChoice>("get_listening_profile")
+      .then((profile) => {
+        setChoice({
+          presetId: profile.presetId ?? "",
+          customText: profile.customText ?? "",
+        });
+      })
+      .catch((error) => {
+        setMessage(error instanceof Error ? error.message : String(error));
+      });
+  }, []);
+
+  const handleChange = (next: IndustryChoice) => {
+    setChoice(next);
+    setMessage(null);
+    void invoke("save_listening_profile", {
+      presetId: next.presetId,
+      customText: next.customText,
+    }).catch((error) => {
+      setMessage(error instanceof Error ? error.message : String(error));
+    });
+  };
+
+  return (
+    <section className="settings-section">
+      <h2 className="section-title">行业</h2>
+      <p className="mt-1 mb-4 text-xs leading-relaxed text-white/44">
+        开始聆听前会记住上次的选择。术语按这个行业解释。
+      </p>
+      <IndustryPicker choice={choice} onChange={handleChange} />
+      {message && <p className="mt-2 mb-0 text-xs text-[#ff8b98]">{message}</p>}
+    </section>
   );
 }
 
@@ -702,9 +412,9 @@ export function SettingsContent({
     <div className={compact ? "" : "h-screen w-screen overflow-y-auto bg-[#151718] px-6 py-5"}>
       {!compact && (
         <div className="mb-5">
-          <p className="section-label">Workspace</p>
+          <p className="section-label">Meetly</p>
           <h1 className="m-0 mt-1 text-base font-semibold text-white/90">设置</h1>
-          <p className="mt-1 mb-0 text-xs text-white/42">模型、语音输入、运行状态与应用更新。</p>
+          <p className="mt-1 mb-0 text-xs text-white/42">行业、转写、语言模型和音频。</p>
         </div>
       )}
 
@@ -719,20 +429,19 @@ export function SettingsContent({
       )}
 
       <div className="settings-stack">
+        <IndustrySection />
         <ProviderSection
-          title="Speech-to-text"
-          description="转写麦克风与系统音频；不同 provider 使用各自独立的协议和音频能力。"
+          title="语音转写"
+          description="把远程会议的系统声音和麦克风转成文字。术语卡片用这段转写来触发。"
           kind="stt"
           onSaved={() => void loadOnboardingStatus()}
         />
         <ProviderSection
-          title="Assistant (LLM)"
-          description="生成 Ask、主动建议和语音整理；ASR 与 LLM provider 独立选择。"
+          title="语言模型"
+          description="按所选行业判断转写里有没有需要解释的术语。没有术语时保持安静。"
           kind="llm"
           onSaved={() => void loadOnboardingStatus()}
         />
-        <WebSearchSection />
-        <DictationSection />
         <DiagnosticsSection />
         <UpdateSection />
         <FooterActions onQuit={onQuit} />
