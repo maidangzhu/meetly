@@ -1,5 +1,11 @@
 # Project Rules
 
+## Product
+
+- Meetly explains industry jargon in a live meeting transcript. It does not dictate, take hold-to-ask voice questions, coach the user, or run interview roles.
+- The listener picks an industry before a session. Presets include CRO / 临床研究, IT, 建筑, 电商, 金融, 医疗, 制造, and 教育, plus custom text.
+- Explain an acronym for the selected industry. CTA is 临床试验助理 only for CRO / 临床研究, not 临床委托协议. If two meanings still fit, show no card.
+
 ## UI Styling
 
 - Use Tailwind utility classes for React UI styling by default.
@@ -11,7 +17,7 @@
 
 ## Floating Island
 
-- Preserve the 600 x 54 collapsed window shape unless the product spec changes.
+- The quiet bar stays about 600 x 54. A term card or the pre-listen industry picker may grow the window; that expanded surface is still the term card, not a second settings window.
 - Keep drag behavior explicit through Tauri `startDragging()` for known draggable surfaces.
 - Keep business buttons separate from draggable surfaces so clicks and drags do not compete.
 - Do not allow text selection in the top floating bar.

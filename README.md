@@ -9,3 +9,14 @@ Meetly 在你听一场会的时候，用大字解释当场出现的行业术语�
 语音转写和语言模型使用你自己的 API Key，配置留在菜单栏的设置窗口里。
 
 [下载最新版本](https://github.com/maidangzhu/meetly/releases/latest) · macOS Apple Silicon · Local-first · BYOK
+
+## 文档
+
+- [产品说明](docs/PRD.md)
+- [当前范围](docs/PRODUCT_ROADMAP.md)
+- [技术设计](docs/TECHNICAL_DESIGN.md)
+- [悬浮窗](docs/FLOATING_ISLAND_DESIGN.md)
+- [模型与转写](docs/PROVIDER_ARCHITECTURE.md)
+- [语音转写](docs/STT_PROVIDERS.md)
+- [防截屏](docs/STEALTH_AND_SCREEN_CAPTURE.md)
+- [项目约定](docs/PROJECT_RULES.md)
